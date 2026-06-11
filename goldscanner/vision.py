@@ -171,17 +171,44 @@ class VisionScorer:
         if item.description:
             parts.append(
                 f'\nSeller\'s description: """{item.description}"""\n'
-                "Treat explicit claims in the description as STRONG evidence: "
-                "'tested 14K' / 'acid tested' / 'marked 1/20 12K GF' usually "
-                "settle the metal question. Note stated weight in grams if given."
+                "The description can mention weight, condition, or 'estate/unmarked' "
+                "— useful context. But do NOT depend on the seller declaring the "
+                "metal: the best finds are real gold that the seller did NOT "
+                "identify, so silence about karat is NOT a negative signal."
             )
         parts.append(
-            "\nHALLMARK HUNT: sellers usually include a close-up photo of the "
-            "karat stamp. Look for it and READ it. Decoder: 14K/585, 10K/417, "
-            "18K/750 = solid gold; '1/20 12K GF', 'GF' = gold-filled; 'RGP' = "
-            "rolled gold plate; 'HGE', 'GE', 'gold tone' = plated/costume; "
-            "'925'/'STERLING' = silver, NOT gold. Report what you read in "
-            "hallmark_read and set gold_type and karat accordingly."
+            "\nVISUAL GOLD ASSESSMENT — judge the metal from how the piece LOOKS, "
+            "the way an experienced gold buyer examines it in hand, NOT from any "
+            "karat stamp. A clearly stamped '14K' is the listing everyone already "
+            "recognizes; the value is in spotting real gold that is unmarked, so "
+            "do NOT require a stamp and do NOT lower confidence when none is "
+            "visible. Study the candidate against the user's labeled reference "
+            "photos and weigh these tells (zoom into edges, the inner shank, "
+            "hinges, raised relief, and the clasp):\n"
+            "• WEAR-THROUGH / BRASSING (strongest tell): gold-filled and plated "
+            "pieces wear through at high-contact spots — exposing a yellow-brass, "
+            "coppery, or silvery base metal underneath. SOLID gold is the same "
+            "color all the way through, so worn spots and scratches stay gold.\n"
+            "• COLOR IN RECESSES & SCRATCHES: solid gold holds a consistent warm "
+            "tone everywhere, even inside scratches and deep in crevices. A "
+            "brassier, too-bright, or greyish color in worn vs. unworn areas "
+            "signals plating over base metal.\n"
+            "• DISCOLORATION: real gold does not tarnish. Green/black/red-copper "
+            "discoloration — around the clasp, in crevices, where skin touches — "
+            "means base metal is showing (gold-filled/plated). Pink/copper "
+            "bleed-through = brass core of gold-filled.\n"
+            "• DENTS & CHIPS exposing white/grey/copper metal under a gold skin = "
+            "NOT solid gold.\n"
+            "• CLASP & FINDINGS: clasp, spring ring, and pins that mismatch the "
+            "body's color or wear more heavily often mean gold-filled construction.\n"
+            "• SEAMS / HOLLOW TUBING: a faint seam line down a hollow bangle leans "
+            "gold-filled.\n"
+            "Set gold_type from this VISUAL evidence (solid_gold / gold_filled / "
+            "gold_plated / not_gold / unknown) and name the specific tells you saw "
+            "in reasoning (e.g. 'warm consistent color inside the shank scratches, "
+            "no brassing at the clasp → looks solid'). If a karat stamp happens to "
+            "be legible, record it in hallmark_read as supporting evidence only — "
+            "its absence is never a negative."
         )
         parts.append(
             "\nIMPORTANT — MULTI-ITEM LOTS: some listings are lots of many jewelry "
@@ -194,11 +221,13 @@ class VisionScorer:
             "are that a matching bangle is in the lot."
         )
         parts.append(
-            "\nUse the labeled reference photos above (if any) as your guide for what "
-            "does and does not count as a match. Be honest about uncertainty — you "
-            "cannot chemically verify that enamel or metal is 'really gold' from a "
-            "photo, so base confidence on visual cues and the title. "
-            "Respond using the required JSON schema."
+            "\nThe user's labeled reference photos above are your STANDARD: the "
+            "MATCH set shows the look you want, the NOT-a-match set shows the "
+            "look-alikes to reject. Compare this candidate's metal and "
+            "construction against them tell-by-tell before deciding. Be honest "
+            "about uncertainty — you cannot chemically verify gold from a photo — "
+            "so base confidence on how closely the visual tells line up with the "
+            "MATCH references. Respond using the required JSON schema."
         )
         return "\n".join(parts)
 
@@ -217,7 +246,11 @@ class VisionScorer:
             blocks.append(
                 {
                     "type": "text",
-                    "text": "Reference photos that ARE a match (gold-filled enamel bangle):",
+                    "text": (
+                        "Reference photos the user labeled as a MATCH — study the "
+                        "metal color, wear, and construction here; this is the "
+                        "look you are hunting for:"
+                    ),
                 }
             )
             for ex in positives:
@@ -226,7 +259,10 @@ class VisionScorer:
             blocks.append(
                 {
                     "type": "text",
-                    "text": "Reference photos that are NOT a match:",
+                    "text": (
+                        "Reference photos the user labeled NOT a match — reject "
+                        "look-alikes that resemble these:"
+                    ),
                 }
             )
             for ex in negatives:
