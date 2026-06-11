@@ -30,10 +30,13 @@ class Score:
     is_match: bool
     confidence: float
     reasoning: str
-    # Structured gold assessment (from description text + hallmark photos).
+    # Structured gold assessment (driven by visual tells, not the stamp).
     gold_type: str = "unknown"  # solid_gold | gold_filled | gold_plated | not_gold | unknown
     karat: str | None = None      # e.g. "14K", "1/20 12K GF"
     hallmark: str | None = None   # stamp text actually read in the photos
+    # Antique-period read: the primary value signal.
+    looks_victorian: bool = False
+    antique_style: str | None = None  # e.g. "Victorian buckle bangle"
 
     @classmethod
     def keyword_only(cls) -> "Score":

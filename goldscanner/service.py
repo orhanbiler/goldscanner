@@ -309,6 +309,7 @@ class Service:
                         gold_type=score.gold_type,
                         karat=score.karat,
                         hallmark=score.hallmark,
+                        antique_style=score.antique_style,
                     )
                     if matched:
                         promoted += 1

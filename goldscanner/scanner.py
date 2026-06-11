@@ -69,6 +69,7 @@ class Scanner:
                 gold_type=score.gold_type,
                 karat=score.karat,
                 hallmark=score.hallmark,
+                antique_style=score.antique_style,
             )
             pct = round(score.confidence * 100)
             if matched:

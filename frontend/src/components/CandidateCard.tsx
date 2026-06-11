@@ -119,6 +119,14 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
           )
         )}
 
+        {item.antique_style && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-700 dark:text-amber-400">
+              🏺 Victorian · {item.antique_style}
+            </span>
+          </div>
+        )}
+
         {goldVerdict(item) && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span

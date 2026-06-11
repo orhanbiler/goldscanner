@@ -60,6 +60,7 @@ class SeenStore:
                     gold_type   TEXT,
                     karat       TEXT,
                     hallmark    TEXT,
+                    antique_style TEXT,
                     status      TEXT NOT NULL DEFAULT 'new',
                     first_seen  REAL NOT NULL,
                     updated     REAL NOT NULL
@@ -92,7 +93,7 @@ class SeenStore:
                     "ALTER TABLE items ADD COLUMN source TEXT NOT NULL "
                     "DEFAULT 'shopgoodwill'"
                 )
-            for col in ("gold_type", "karat", "hallmark"):
+            for col in ("gold_type", "karat", "hallmark", "antique_style"):
                 if col not in cols:
                     self._conn.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
             self._conn.commit()
@@ -115,6 +116,7 @@ class SeenStore:
         gold_type: str | None = None,
         karat: str | None = None,
         hallmark: str | None = None,
+        antique_style: str | None = None,
     ) -> None:
         now = time.time()
         with self._lock:
@@ -123,8 +125,8 @@ class SeenStore:
                 INSERT OR IGNORE INTO items
                     (item_id, source, title, price, end_time, num_bids, image_url, url,
                      matched, confidence, reasoning, gold_type, karat, hallmark,
-                     status, first_seen, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     antique_style, status, first_seen, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(item.item_id),
@@ -141,6 +143,7 @@ class SeenStore:
                     gold_type,
                     karat,
                     hallmark,
+                    antique_style,
                     STATUS_NEW,
                     now,
                     now,
@@ -173,6 +176,7 @@ class SeenStore:
         gold_type: str | None = None,
         karat: str | None = None,
         hallmark: str | None = None,
+        antique_style: str | None = None,
     ) -> bool:
         """Overwrite an item's verdict; promote rejected→matched as 'new'."""
         with self._lock:
@@ -188,7 +192,8 @@ class SeenStore:
             self._conn.execute(
                 """
                 UPDATE items SET matched = ?, confidence = ?, reasoning = ?,
-                    gold_type = ?, karat = ?, hallmark = ?, status = ?, updated = ?
+                    gold_type = ?, karat = ?, hallmark = ?, antique_style = ?,
+                    status = ?, updated = ?
                 WHERE item_id = ?
                 """,
                 (
@@ -198,6 +203,7 @@ class SeenStore:
                     gold_type,
                     karat,
                     hallmark,
+                    antique_style,
                     status,
                     time.time(),
                     str(item_id),

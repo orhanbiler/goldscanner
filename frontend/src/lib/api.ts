@@ -14,6 +14,7 @@ export interface Item {
   gold_type: string | null;
   karat: string | null;
   hallmark: string | null;
+  antique_style: string | null;
   status: string;
 }
 

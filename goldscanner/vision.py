@@ -57,6 +57,25 @@ _SCHEMA = {
                 "stamp is legible."
             ),
         },
+        "looks_victorian": {
+            "type": "boolean",
+            "description": (
+                "True if the piece shows genuine antique Victorian/Edwardian-era "
+                "construction and styling (hand craftsmanship, period motifs, "
+                "old-cut stones, mellow patina) rather than a modern machine-made "
+                "or costume reproduction."
+            ),
+        },
+        "antique_style": {
+            "type": "string",
+            "description": (
+                "If it reads as a genuine period piece, name the style/motif in a "
+                "few words, e.g. 'Victorian buckle bangle', 'Etruscan-revival "
+                "wirework', 'serpent bangle, garnet eyes', 'taille d'epargne black "
+                "enamel', 'book-chain bracelet', 'mourning / hairwork'. Empty "
+                "string if it does not read as period."
+            ),
+        },
         "is_match": {
             "type": "boolean",
             "description": (
@@ -81,6 +100,8 @@ _SCHEMA = {
         "gold_type",
         "karat",
         "hallmark_read",
+        "looks_victorian",
+        "antique_style",
         "is_match",
         "confidence",
         "reasoning",
@@ -155,6 +176,8 @@ class VisionScorer:
             gold_type=gold_type,
             karat=(str(data.get("karat") or "").strip() or None),
             hallmark=(str(data.get("hallmark_read") or "").strip() or None),
+            looks_victorian=bool(data.get("looks_victorian")),
+            antique_style=(str(data.get("antique_style") or "").strip() or None),
         )
 
     # -- prompt building -----------------------------------------------------
@@ -209,6 +232,44 @@ class VisionScorer:
             "no brassing at the clasp → looks solid'). If a karat stamp happens to "
             "be legible, record it in hallmark_read as supporting evidence only — "
             "its absence is never a negative."
+        )
+        parts.append(
+            "\nVICTORIAN PERIOD RECOGNITION — this is the PRIMARY signal and the "
+            "thing that most reliably separates a valuable find from a cheap "
+            "look-alike. Genuine Victorian/Edwardian (c.1837–1910) bangles and "
+            "bracelets look fundamentally different from modern gold-filled or "
+            "costume reproductions, and that difference is visible in photos. "
+            "Treat strong period authenticity as a strong reason to surface the "
+            "item (set looks_victorian=true and name the style in antique_style).\n"
+            "Authentic period tells:\n"
+            "• CONSTRUCTION: hinged bangle with a concealed box clasp and a thin "
+            "safety chain; hand-fabricated with slight asymmetry and tool marks; "
+            "lightweight hollow repoussé/domed gold-sheet work is authentic and "
+            "common (NOT a sign of fake).\n"
+            "• PERIOD MOTIFS (high-value signals): buckle / strap-and-garter "
+            "bangles; coiled serpent/snake bangles, often with a cabochon garnet "
+            "or turquoise head/eyes; Etruscan-revival granulation (tiny gold "
+            "beads) and twisted ropework/wirework; cannetille filigree; taille "
+            "d'epargne black or blue enamel set into engraved channels; "
+            "book-chain bracelets (flat folded 'book' links with an engraved "
+            "oval station); gate-link bracelets with a heart padlock clasp; "
+            "forget-me-not, ivy, knot, star, crescent, bee/insect motifs; "
+            "mourning / woven-hair pieces with black enamel.\n"
+            "• STONES THAT DATE IT: seed/half pearls, turquoise pavé, Bohemian "
+            "garnets, coral, amethyst, banded Scottish agate, cabochon "
+            "'carbuncle' garnets; rose-cut and old-mine-cut diamonds (chunky, "
+            "off-round — NOT modern round brilliants); closed-back, foil-backed "
+            "colored-stone settings; collet/bezel settings with milgrain.\n"
+            "• GOLD: warm, mellow, slightly soft yellow with a soft patina; often "
+            "lower karat (9–15k British, 10–14k American). Not a bright, hard, "
+            "uniform modern-plate shine.\n"
+            "MODERN / REPRODUCTION RED FLAGS (lean against): crisp machine-stamped "
+            "uniformity, perfectly symmetric un-worn edges, contemporary findings "
+            "(lobster clasps), bright hard plating, glued or modern faceted-glass "
+            "stones, and brassing/wear-through exposing base metal. When a piece "
+            "is genuinely period AND shows solid-gold metal tells, it is the "
+            "strongest possible match; a fine period piece in antique gold-filled "
+            "still has real value — judge period authenticity first, metal second."
         )
         parts.append(
             "\nIMPORTANT — MULTI-ITEM LOTS: some listings are lots of many jewelry "

@@ -170,8 +170,9 @@ def test_description_fed_to_scorer_and_gold_fields_stored():
             def score(self, item, max_images=None):
                 self.seen_descriptions[item.item_id] = item.description
                 return Score(
-                    True, 0.9, "reads 14K",
+                    True, 0.9, "warm patina, serpent head with garnet eyes",
                     gold_type="solid_gold", karat="14K", hallmark="14K",
+                    looks_victorian=True, antique_style="Victorian serpent bangle",
                 )
 
         scorer = GoldScorer()
@@ -185,6 +186,7 @@ def test_description_fed_to_scorer_and_gold_fields_stored():
         assert (row["gold_type"], row["karat"], row["hallmark"]) == (
             "solid_gold", "14K", "14K",
         )
+        assert row["antique_style"] == "Victorian serpent bangle"
         assert len(matches) == 1
     finally:
         store.close()
