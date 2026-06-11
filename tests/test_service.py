@@ -4,7 +4,7 @@ import os
 import tempfile
 
 from goldscanner.config import Config
-from goldscanner.service import DEFAULT_GUIDANCE, Service
+from goldscanner.service import _GUIDANCE_V1, DEFAULT_GUIDANCE, GUIDANCE_VERSION, Service
 from goldscanner.store import SETTING_GUIDANCE
 
 
@@ -49,5 +49,41 @@ def test_seed_disabled_leaves_guidance_empty():
         svc = Service(_cfg(path, seed_defaults=False))
         assert svc.store.get_setting(SETTING_GUIDANCE) == ""
         svc.store.close()
+    finally:
+        os.remove(path)
+
+
+def test_unedited_v1_guidance_upgrades_to_v2():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        # Simulate a DB seeded by the previous version of the app.
+        svc = Service(_cfg(path, seed_defaults=False))
+        svc.store.set_setting(SETTING_GUIDANCE, _GUIDANCE_V1)
+        svc.store.set_setting("guidance_seeded", "1")
+        svc.store.close()
+
+        svc2 = Service(_cfg(path, seed_defaults=True))
+        assert svc2.store.get_setting(SETTING_GUIDANCE) == DEFAULT_GUIDANCE
+        assert "GEM-SET" in svc2.store.get_setting(SETTING_GUIDANCE)
+        assert svc2.store.get_setting("guidance_seeded") == GUIDANCE_VERSION
+        svc2.store.close()
+    finally:
+        os.remove(path)
+
+
+def test_edited_guidance_survives_upgrade():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        svc = Service(_cfg(path, seed_defaults=False))
+        svc.store.set_setting(SETTING_GUIDANCE, _GUIDANCE_V1 + "\nMY EDIT")
+        svc.store.set_setting("guidance_seeded", "1")
+        svc.store.close()
+
+        svc2 = Service(_cfg(path, seed_defaults=True))
+        assert svc2.store.get_setting(SETTING_GUIDANCE).endswith("MY EDIT")
+        assert svc2.store.get_setting("guidance_seeded") == GUIDANCE_VERSION
+        svc2.store.close()
     finally:
         os.remove(path)

@@ -22,6 +22,7 @@ from .store import (
     VALID_LABELS,
     VALID_STATUSES,
 )
+from .times import with_end_ts
 
 log = logging.getLogger(__name__)
 
@@ -89,13 +90,13 @@ def create_app(service: Service) -> FastAPI:
     def api_items(status: str = "new") -> dict:
         if status == "rejected":
             return {
-                "items": service.store.list_rejected(),
+                "items": with_end_ts(service.store.list_rejected()),
                 "counts": service.store.counts(),
             }
         if status not in VALID_STATUSES and status != "all":
             raise HTTPException(400, "invalid status filter")
         items = service.store.list_matches(None if status == "all" else status)
-        return {"items": items, "counts": service.store.counts()}
+        return {"items": with_end_ts(items), "counts": service.store.counts()}
 
     @app.post("/api/items/{item_id}/status")
     def api_set_status(item_id: str, body: StatusUpdate) -> dict:
@@ -145,7 +146,11 @@ def create_app(service: Service) -> FastAPI:
 
     @app.get("/api/queue")
     def api_queue(limit: int = 40) -> dict:
-        return {"items": service.store.labeling_queue(limit=max(1, min(limit, 100)))}
+        return {
+            "items": with_end_ts(
+                service.store.labeling_queue(limit=max(1, min(limit, 100)))
+            )
+        }
 
     @app.get("/api/examples")
     def api_examples(label: str | None = None) -> dict:

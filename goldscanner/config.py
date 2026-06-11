@@ -149,7 +149,9 @@ class Config:
                 "bracelet with ornate engraving, typically decorated with BLACK "
                 "taille d'épargne enamel in scrollwork, foliate/vine, or geometric "
                 "patterns over a finely engine-turned ground. Ornately hand-engraved "
-                "antique gold bangles in this style also count even without enamel.",
+                "antique gold bangles, and antique GEM-SET gold bangles (seed "
+                "pearls, emeralds, garnets, opals) with Victorian filigree or "
+                "Etruscan-revival styling, also count even without enamel.",
             ),
             title_keywords=_list(
                 "GOLDSCANNER_TITLE_KEYWORDS",

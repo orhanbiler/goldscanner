@@ -21,9 +21,9 @@ from .vision import VisionScorer
 
 log = logging.getLogger(__name__)
 
-# Seeded into the DB on first run (describes the user's reference pieces:
-# antique gold / gold-filled bangles with black taille d'épargne enamel).
-DEFAULT_GUIDANCE = """\
+# Older seeded guidance versions. If the stored guidance still equals one of
+# these verbatim (user never edited it), it is safe to auto-upgrade.
+_GUIDANCE_V1 = """\
 I am looking for ANTIQUE / VICTORIAN-era gold and gold-filled hinged BANGLE
 bracelets.
 
@@ -49,6 +49,45 @@ WHAT DOES NOT MATCH (say NO):
 
 When unsure between a genuine antique engraved/enamel gold bangle and a modern
 look-alike, lean YES if the engraving is fine and Victorian in character.
+"""
+
+# Current seeded guidance (v2): antique gem-set gold bangles now count too.
+GUIDANCE_VERSION = "2"
+DEFAULT_GUIDANCE = """\
+I am looking for ANTIQUE / VICTORIAN-era gold and gold-filled hinged BANGLE
+bracelets.
+
+WHAT MATCHES (say YES):
+- Wide, rigid HINGED bangle bracelets, usually with a hinge on one side and a
+  box clasp plus a thin safety chain on the other.
+- Warm YELLOW or ROSE gold tone. Solid karat gold (10k/14k/18k), gold-filled,
+  and rolled gold plate (RGP) all count.
+- Decorated with BLACK enamel in the "taille d'épargne" technique: black enamel
+  set into engraved channels forming scrollwork, arabesques, foliate vine-and-leaf
+  patterns, or symmetric geometric medallions.
+- Usually over a finely hand-engraved or engine-turned (machine-stippled) ground.
+- Ornately HAND-ENGRAVED antique gold bangles with this same Victorian medallion /
+  scroll / floral styling ALSO count even when there is little or no enamel.
+- Antique GEM-SET gold bangles ALSO count: Victorian/Edwardian hinged gold
+  bangles set with small period stones — seed pearls, emeralds, garnets, opals,
+  amethysts, coral, turquoise cabochons — with ornate filigree, applied wirework,
+  or Etruscan-revival decoration. Real gold construction with antique styling is
+  what matters, even with no enamel at all.
+- Antique, estate, Victorian, Edwardian, Etruscan-revival styling.
+
+WHAT DOES NOT MATCH (say NO):
+- Modern, plain, minimalist, thin-wire, or stacking bangles.
+- Costume jewelry, brass, copper, base metal, stainless steel, or fashion gold-tone.
+- Faux/simulated stone inlay on modern gold-tone metal (e.g. faux turquoise or
+  plastic inlay bands with a plain contemporary finish).
+- Bright COLORFUL painted / epoxy "enamel" or modern cloisonné flowers.
+- Cuffs that aren't bangle-shaped, charm/chain/tennis bracelets, or watches.
+- MODERN gemstone or diamond bangles: sleek channel-set, tennis-style, prong-set
+  solitaire rows, or minimalist contemporary settings.
+
+When unsure between a genuine antique gold bangle (engraved, enameled, or
+gem-set) and a modern look-alike, lean YES if the workmanship is fine and
+Victorian in character.
 """
 
 
@@ -160,13 +199,28 @@ class Service:
         return sources
 
     def _seed_default_guidance(self) -> None:
-        """Populate the guidance once, on first run, without clobbering the user."""
-        if self.store.get_setting("guidance_seeded") == "1":
+        """Seed or upgrade the guidance without ever clobbering user edits.
+
+        - Empty guidance → seed the current default.
+        - Guidance still byte-identical to an older seeded default (user never
+          touched it) → upgrade to the current default.
+        - Anything else (user-edited) → leave alone.
+        """
+        if self.store.get_setting("guidance_seeded") == GUIDANCE_VERSION:
             return
-        if not self.store.get_setting(SETTING_GUIDANCE).strip():
+        current = self.store.get_setting(SETTING_GUIDANCE)
+        if not current.strip():
             self.store.set_setting(SETTING_GUIDANCE, DEFAULT_GUIDANCE)
-            log.info("Seeded default guidance for antique enamel gold bangles.")
-        self.store.set_setting("guidance_seeded", "1")
+            log.info("Seeded default guidance (v%s).", GUIDANCE_VERSION)
+        elif current.strip() == _GUIDANCE_V1.strip():
+            self.store.set_setting(SETTING_GUIDANCE, DEFAULT_GUIDANCE)
+            self.activity.add(
+                "📖 Updated the AI guidance: antique gem-set gold bangles "
+                "(seed pearls, emeralds, garnets…) now count as matches too.",
+                SUCCESS,
+            )
+            log.info("Upgraded seeded guidance to v%s.", GUIDANCE_VERSION)
+        self.store.set_setting("guidance_seeded", GUIDANCE_VERSION)
 
     def scan_once(self) -> int:
         """Run one scan, email new matches, return how many matched.

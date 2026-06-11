@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { Item } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, endsLabel } from "@/lib/utils";
 
 interface Props {
   item: Item;
@@ -78,8 +78,15 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
               {item.num_bids ?? 0}
             </span>
           </span>
-          {item.end_time && <span>Ends {item.end_time}</span>}
         </div>
+        {(item.end_ts || item.end_time) && (
+          <div className="text-xs text-muted-foreground">
+            ⏳ Ends{" "}
+            <span className="font-semibold text-foreground">
+              {endsLabel(item.end_ts, item.end_time)}
+            </span>
+          </div>
+        )}
 
         {scored ? (
           <div className="flex items-center gap-2">

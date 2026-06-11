@@ -4,6 +4,7 @@ export interface Item {
   title: string;
   price: string | null;
   end_time: string | null;
+  end_ts: number | null;
   num_bids: number | null;
   image_url: string | null;
   url: string;
