@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#7a5c1e" />
+<title>goldscanner</title>
+<style>
+  :root {
+    --bg: #fbf8f1;
+    --card: #ffffff;
+    --ink: #2b2620;
+    --muted: #8a8175;
+    --gold: #b8860b;
+    --gold-dark: #7a5c1e;
+    --line: #ece5d6;
+    --good: #2f9e57;
+    --bad: #c0563f;
+    --shadow: 0 1px 3px rgba(60,45,15,.10), 0 6px 18px rgba(60,45,15,.06);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.45;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+    color: #fff; padding: 14px 16px calc(14px); box-shadow: var(--shadow);
+    padding-top: calc(14px + env(safe-area-inset-top));
+  }
+  .bar { display: flex; align-items: center; gap: 10px; max-width: 900px; margin: 0 auto; }
+  .logo { font-size: 20px; font-weight: 800; letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
+  .logo span.dot { font-size: 22px; }
+  .grow { flex: 1; }
+  button {
+    font: inherit; cursor: pointer; border: 0; border-radius: 10px; padding: 9px 13px;
+    background: rgba(255,255,255,.18); color: #fff; font-weight: 600;
+    transition: background .15s, transform .05s;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .5; cursor: default; }
+  .substatus { max-width: 900px; margin: 6px auto 0; font-size: 12.5px; opacity: .9; }
+
+  .tabs { display: flex; gap: 6px; max-width: 900px; margin: 12px auto 0; padding: 0 12px; }
+  .tab {
+    flex: 1; text-align: center; padding: 10px 6px; border-radius: 12px;
+    background: var(--card); color: var(--muted); font-weight: 700; font-size: 14px;
+    border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .tab.active { color: var(--gold-dark); border-color: var(--gold); }
+  .tab .n {
+    display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 6px;
+    border-radius: 999px; background: var(--bg); font-size: 12px; color: var(--gold-dark);
+  }
+  .tab.active .n { background: var(--gold); color: #fff; }
+
+  main { max-width: 900px; margin: 14px auto 40px; padding: 0 12px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 720px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column;
+  }
+  .thumb { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #f0ead9; }
+  .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .title { font-weight: 700; font-size: 15.5px; }
+  .title a { color: var(--ink); text-decoration: none; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink); }
+  .conf { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .barwrap { flex: 1; height: 7px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .barfill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-dark)); }
+  .why { font-size: 13px; color: #5e564a; background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+  .actions { display: flex; gap: 8px; margin-top: 2px; }
+  .actions a, .actions button { flex: 1; text-align: center; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px; }
+  .btn-view { background: var(--gold-dark); color: #fff; text-decoration: none; }
+  .btn-fav { background: #fff; color: var(--good); border: 1px solid var(--good); }
+  .btn-fav.on { background: var(--good); color: #fff; }
+  .btn-dismiss { background: #fff; color: var(--bad); border: 1px solid #e3c8bf; }
+
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  .empty .big { font-size: 40px; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4);
+          border-top-color: #fff; border-radius: 50%; animation: r .7s linear infinite; vertical-align: -2px; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px;
+    opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="logo"><span class="dot">🪙</span> goldscanner</div>
+    <div class="grow"></div>
+    <button id="scanBtn">Scan now</button>
+  </div>
+  <div class="substatus" id="substatus">Loading…</div>
+</header>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-status="new">New <span class="n" id="n-new">0</span></div>
+  <div class="tab" data-status="favorite">★ Favorites <span class="n" id="n-favorite">0</span></div>
+  <div class="tab" data-status="all">All <span class="n" id="n-all">0</span></div>
+</div>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>
+    <div class="big">🔎</div>
+    <p id="emptyMsg">No items yet. The scanner runs in the background — check back soon.</p>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const state = { status: "new", items: [], counts: {} };
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 1800);
+}
+function timeAgo(ts) {
+  if (!ts) return "never";
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
+async function loadStatus() {
+  try {
+    const r = await fetch("/api/status");
+    const d = await r.json();
+    const c = d.counts || {};
+    document.getElementById("n-new").textContent = c.new || 0;
+    document.getElementById("n-favorite").textContent = c.favorite || 0;
+    document.getElementById("n-all").textContent = c.matched || 0;
+    const ai = d.use_ai ? "AI scoring on" : "keyword-only";
+    document.getElementById("substatus").textContent =
+      `${c.matched || 0} candidate(s) · ${c.seen || 0} listings checked · last scan ${timeAgo(d.last_scan_at)} · ${ai}`;
+  } catch (e) { /* ignore */ }
+}
+
+async function loadItems() {
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("empty");
+  try {
+    const r = await fetch("/api/items?status=" + encodeURIComponent(state.status));
+    const d = await r.json();
+    state.items = d.items || [];
+    state.counts = d.counts || {};
+  } catch (e) {
+    state.items = [];
+  }
+  if (!state.items.length) {
+    grid.innerHTML = "";
+    empty.hidden = false;
+    document.getElementById("emptyMsg").textContent =
+      state.status === "favorite"
+        ? "No favorites yet. Tap ★ on a candidate to save it here."
+        : "Nothing here yet. The scanner runs every few minutes — check back soon.";
+  } else {
+    empty.hidden = true;
+    grid.innerHTML = state.items.map(cardHTML).join("");
+  }
+}
+
+function cardHTML(it) {
+  const conf = Math.round((it.confidence || 0) * 100);
+  const img = it.image_url
+    ? `<img class="thumb" loading="lazy" src="${esc(it.image_url)}" alt="">`
+    : `<div class="thumb"></div>`;
+  const price = it.price != null ? `$${esc(it.price)}` : "—";
+  const favOn = it.status === "favorite";
+  return `
+    <div class="card" data-id="${esc(it.item_id)}">
+      <a href="${esc(it.url)}" target="_blank" rel="noopener">${img}</a>
+      <div class="body">
+        <div class="title"><a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title)}</a></div>
+        <div class="meta">
+          <span>Price <b>${price}</b></span>
+          <span>Bids <b>${it.num_bids ?? 0}</b></span>
+          ${it.end_time ? `<span>Ends <b>${esc(it.end_time)}</b></span>` : ""}
+        </div>
+        <div class="conf">
+          <span>${conf}%</span>
+          <div class="barwrap"><div class="barfill" style="width:${conf}%"></div></div>
+        </div>
+        ${it.reasoning ? `<div class="why">${esc(it.reasoning)}</div>` : ""}
+        <div class="actions">
+          <a class="btn-view" href="${esc(it.url)}" target="_blank" rel="noopener">View ↗</a>
+          <button class="btn-fav ${favOn ? "on" : ""}" onclick="setStatus('${esc(it.item_id)}','${favOn ? "new" : "favorite"}')">
+            ${favOn ? "★ Saved" : "☆ Favorite"}
+          </button>
+          <button class="btn-dismiss" onclick="setStatus('${esc(it.item_id)}','dismissed')">Hide</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function setStatus(id, status) {
+  try {
+    const r = await fetch(`/api/items/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!r.ok) throw new Error();
+    toast(status === "favorite" ? "Saved to favorites ★"
+        : status === "dismissed" ? "Hidden"
+        : "Removed from favorites");
+    await Promise.all([loadItems(), loadStatus()]);
+  } catch (e) { toast("Something went wrong"); }
+}
+
+document.getElementById("tabs").addEventListener("click", (e) => {
+  const tab = e.target.closest(".tab");
+  if (!tab) return;
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  tab.classList.add("active");
+  state.status = tab.dataset.status;
+  loadItems();
+});
+
+document.getElementById("scanBtn").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Scanning';
+  try {
+    const r = await fetch("/api/scan", { method: "POST" });
+    const d = await r.json();
+    toast(r.ok ? `Scan done — ${d.matches} match(es)` : "A scan is already running");
+  } catch (e) { toast("Scan failed"); }
+  btn.disabled = false; btn.textContent = "Scan now";
+  await Promise.all([loadItems(), loadStatus()]);
+});
+
+loadStatus();
+loadItems();
+setInterval(() => { loadStatus(); if (document.visibilityState === "visible") loadItems(); }, 30000);
+</script>
+</body>
+</html>

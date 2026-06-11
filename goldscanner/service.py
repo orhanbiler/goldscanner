@@ -1,0 +1,113 @@
+"""Builds and wires the app's components, and owns the scan loop.
+
+Shared by the web server (which serves the UI) and the background scanner thread.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+
+from .client import ShopGoodwillClient
+from .config import Config
+from .emailer import Emailer
+from .scanner import Scanner
+from .store import SeenStore
+from .vision import VisionScorer
+
+log = logging.getLogger(__name__)
+
+
+class Service:
+    def __init__(self, config: Config):
+        self.config = config
+        self.client = ShopGoodwillClient()
+        self.store = SeenStore(config.db_path)
+        self.scorer = (
+            VisionScorer(
+                client=self.client,
+                target_description=config.target_description,
+                api_key=config.anthropic_api_key,
+                model=config.model,
+                max_images=config.max_images_per_item,
+            )
+            if config.use_ai
+            else None
+        )
+        self.emailer = (
+            Emailer(
+                host=config.smtp_host,
+                port=config.smtp_port,
+                user=config.smtp_user,
+                password=config.smtp_pass,
+                sender=config.email_from,
+                recipient=config.email_to,
+            )
+            if config.email_enabled
+            else None
+        )
+        self.scanner = Scanner(config, self.client, self.store, self.scorer)
+
+        self._scan_lock = threading.Lock()
+        self._stop = threading.Event()
+        self.last_scan_at: float | None = None
+        self.last_scan_matches: int = 0
+        self.scanning: bool = False
+
+    def scan_once(self) -> int:
+        """Run one scan, email new matches, return how many matched.
+
+        Guarded so the periodic loop and a manual "scan now" can't overlap.
+        """
+        with self._scan_lock:
+            self.scanning = True
+            try:
+                matches = self.scanner.scan_once()
+                if matches and self.emailer is not None:
+                    try:
+                        self.emailer.send_digest(matches)
+                    except Exception as exc:  # noqa: BLE001
+                        log.error("Failed to send email digest: %s", exc)
+                self.last_scan_at = time.time()
+                self.last_scan_matches = len(matches)
+                return len(matches)
+            finally:
+                self.scanning = False
+
+    def run_loop(self) -> None:
+        """Blocking scan loop until stop() is called."""
+        log.info(
+            "Scan loop starting. queries=%s ai=%s email=%s interval=%ds",
+            self.config.queries,
+            self.config.use_ai,
+            self.config.email_enabled,
+            self.config.interval_seconds,
+        )
+        while not self._stop.is_set():
+            try:
+                self.scan_once()
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Scan cycle failed: %s", exc)
+            # Wait interval, but wake immediately on stop.
+            self._stop.wait(self.config.interval_seconds)
+
+    def start_background(self) -> threading.Thread:
+        thread = threading.Thread(target=self.run_loop, name="scanner", daemon=True)
+        thread.start()
+        return thread
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def status(self) -> dict:
+        counts = self.store.counts()
+        return {
+            "counts": counts,
+            "last_scan_at": self.last_scan_at,
+            "last_scan_matches": self.last_scan_matches,
+            "scanning": self.scanning,
+            "interval_seconds": self.config.interval_seconds,
+            "use_ai": self.config.use_ai,
+            "queries": self.config.queries,
+        }

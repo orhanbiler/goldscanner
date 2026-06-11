@@ -34,13 +34,16 @@ class Scanner:
         for item in self._iter_new_items():
             new_count += 1
             if not self._passes_prefilter(item):
-                self.store.mark_seen(item.item_id, item.title, matched=False)
+                self.store.record(item, matched=False, confidence=None, reasoning="")
                 continue
 
             score = self._score(item)
             matched = score.is_match and score.confidence >= self.config.min_confidence
-            self.store.mark_seen(
-                item.item_id, item.title, matched=matched, confidence=score.confidence
+            self.store.record(
+                item,
+                matched=matched,
+                confidence=score.confidence,
+                reasoning=score.reasoning,
             )
             if matched:
                 log.info(

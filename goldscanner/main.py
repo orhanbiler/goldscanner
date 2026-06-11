@@ -1,17 +1,17 @@
-"""Entry point: build everything from env and run the scan loop."""
+"""Entry point.
+
+Default: start the background scanner thread AND serve the web UI (Railway).
+With GOLDSCANNER_RUN_ONCE=true: run a single scan and exit (cron / testing).
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 import sys
-import time
 
-from .client import ShopGoodwillClient
 from .config import Config
-from .emailer import Emailer
-from .scanner import Scanner
-from .store import SeenStore
-from .vision import VisionScorer
+from .service import Service
 
 
 def build_logger() -> logging.Logger:
@@ -33,61 +33,32 @@ def main() -> int:
             log.error("Config problem: %s", p)
         return 2
 
-    client = ShopGoodwillClient()
-    store = SeenStore(config.db_path)
-    scorer = (
-        VisionScorer(
-            client=client,
-            target_description=config.target_description,
-            api_key=config.anthropic_api_key,
-            model=config.model,
-            max_images=config.max_images_per_item,
-        )
-        if config.use_ai
-        else None
-    )
-    emailer = (
-        Emailer(
-            host=config.smtp_host,
-            port=config.smtp_port,
-            user=config.smtp_user,
-            password=config.smtp_pass,
-            sender=config.email_from,
-            recipient=config.email_to,
-        )
-        if config.email_enabled
-        else None
-    )
-    scanner = Scanner(config, client, store, scorer)
-
+    service = Service(config)
     log.info(
-        "goldscanner starting. queries=%s ai=%s email=%s db=%s (%d items known)",
+        "goldscanner ready. queries=%s ai=%s email=%s db=%s (%d listings known)",
         config.queries,
         config.use_ai,
         config.email_enabled,
         config.db_path,
-        store.count(),
+        service.store.count(),
     )
 
-    while True:
-        try:
-            matches = scanner.scan_once()
-            if matches and emailer is not None:
-                try:
-                    emailer.send_digest(matches)
-                except Exception as exc:  # noqa: BLE001
-                    log.error("Failed to send email digest: %s", exc)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("Scan cycle failed: %s", exc)
+    if config.run_once:
+        matches = service.scan_once()
+        log.info("RUN_ONCE: single scan complete, %d match(es).", matches)
+        service.store.close()
+        return 0
 
-        if config.run_once:
-            log.info("RUN_ONCE set; exiting after a single scan.")
-            break
+    # Long-running: background scanner + web server.
+    import uvicorn
 
-        log.info("Sleeping %ds until next scan.", config.interval_seconds)
-        time.sleep(config.interval_seconds)
+    from .web import create_app
 
-    store.close()
+    service.start_background()
+    app = create_app(service)
+    port = int(os.environ.get("PORT", "8000"))
+    log.info("Serving web UI on 0.0.0.0:%d", port)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
     return 0
 
 
