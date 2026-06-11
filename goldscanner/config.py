@@ -64,6 +64,9 @@ class Config:
     pages_per_query: int = 2
     run_once: bool = False
 
+    # Seed the built-in guidance (antique enamel bangles) into the DB on first run.
+    seed_defaults: bool = True
+
     # Persistence
     db_path: str = "goldscanner.db"
 
@@ -85,8 +88,11 @@ class Config:
             ),
             target_description=os.environ.get(
                 "GOLDSCANNER_TARGET_DESCRIPTION",
-                "A gold-filled bangle bracelet decorated with genuine enamel "
-                "on gold-toned metal.",
+                "An antique / Victorian-era gold or gold-filled hinged bangle "
+                "bracelet with ornate engraving, typically decorated with BLACK "
+                "taille d'épargne enamel in scrollwork, foliate/vine, or geometric "
+                "patterns over a finely engine-turned ground. Ornately hand-engraved "
+                "antique gold bangles in this style also count even without enamel.",
             ),
             title_keywords=_list("GOLDSCANNER_TITLE_KEYWORDS", ["bangle", "bracelet"]),
             min_confidence=_float("GOLDSCANNER_MIN_CONFIDENCE", 0.6),
@@ -98,6 +104,7 @@ class Config:
             interval_seconds=_int("GOLDSCANNER_INTERVAL_SECONDS", 900),
             pages_per_query=_int("GOLDSCANNER_PAGES_PER_QUERY", 2),
             run_once=_bool("GOLDSCANNER_RUN_ONCE", False),
+            seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
             db_path=os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db"),
             email_enabled=_bool("GOLDSCANNER_EMAIL_ENABLED", True),
             smtp_host=os.environ.get("SMTP_HOST", ""),

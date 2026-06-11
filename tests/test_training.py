@@ -14,7 +14,13 @@ from goldscanner.web import create_app
 def make_client():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    cfg = Config(queries=["bangle"], use_ai=False, email_enabled=False, db_path=path)
+    cfg = Config(
+        queries=["bangle"],
+        use_ai=False,
+        email_enabled=False,
+        seed_defaults=False,
+        db_path=path,
+    )
     service = Service(cfg)
     return service, TestClient(create_app(service)), path
 

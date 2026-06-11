@@ -13,10 +13,40 @@ from .client import ShopGoodwillClient
 from .config import Config
 from .emailer import Emailer
 from .scanner import Scanner
-from .store import SeenStore
+from .store import SETTING_GUIDANCE, SeenStore
 from .vision import VisionScorer
 
 log = logging.getLogger(__name__)
+
+# Seeded into the DB on first run (describes the user's reference pieces:
+# antique gold / gold-filled bangles with black taille d'épargne enamel).
+DEFAULT_GUIDANCE = """\
+I am looking for ANTIQUE / VICTORIAN-era gold and gold-filled hinged BANGLE
+bracelets.
+
+WHAT MATCHES (say YES):
+- Wide, rigid HINGED bangle bracelets, usually with a hinge on one side and a
+  box clasp plus a thin safety chain on the other.
+- Warm YELLOW or ROSE gold tone. Solid karat gold, gold-filled, and rolled gold
+  plate (RGP) all count.
+- Decorated with BLACK enamel in the "taille d'épargne" technique: black enamel
+  set into engraved channels forming scrollwork, arabesques, foliate vine-and-leaf
+  patterns, or symmetric geometric medallions.
+- Usually over a finely hand-engraved or engine-turned (machine-stippled) ground.
+- Ornately HAND-ENGRAVED antique gold bangles with this same Victorian medallion /
+  scroll / floral styling ALSO count even when there is little or no enamel.
+- Antique, estate, Victorian, Edwardian, Etruscan-revival styling.
+
+WHAT DOES NOT MATCH (say NO):
+- Modern, plain, minimalist, thin-wire, or stacking bangles.
+- Costume jewelry, brass, copper, base metal, stainless steel, or fashion gold-tone.
+- Bright COLORFUL painted / epoxy "enamel" or modern cloisonné flowers.
+- Cuffs that aren't bangle-shaped, charm/chain/tennis bracelets, or watches.
+- Bangles set primarily with gemstones or diamonds rather than enamel/engraving.
+
+When unsure between a genuine antique engraved/enamel gold bangle and a modern
+look-alike, lean YES if the engraving is fine and Victorian in character.
+"""
 
 
 class Service:
@@ -51,11 +81,23 @@ class Service:
         )
         self.scanner = Scanner(config, self.client, self.store, self.scorer)
 
+        if config.seed_defaults:
+            self._seed_default_guidance()
+
         self._scan_lock = threading.Lock()
         self._stop = threading.Event()
         self.last_scan_at: float | None = None
         self.last_scan_matches: int = 0
         self.scanning: bool = False
+
+    def _seed_default_guidance(self) -> None:
+        """Populate the guidance once, on first run, without clobbering the user."""
+        if self.store.get_setting("guidance_seeded") == "1":
+            return
+        if not self.store.get_setting(SETTING_GUIDANCE).strip():
+            self.store.set_setting(SETTING_GUIDANCE, DEFAULT_GUIDANCE)
+            log.info("Seeded default guidance for antique enamel gold bangles.")
+        self.store.set_setting("guidance_seeded", "1")
 
     def scan_once(self) -> int:
         """Run one scan, email new matches, return how many matched.

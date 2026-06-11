@@ -19,6 +19,7 @@ def make_service():
         title_keywords=["bangle"],
         use_ai=False,
         email_enabled=False,
+        seed_defaults=False,
         db_path=path,
     )
     service = Service(cfg)
