@@ -62,6 +62,8 @@ def test_etsy_api_mode_two_step_fetch(monkeypatch):
     calls = []
 
     class FakeResp:
+        status_code = 200
+
         def __init__(self, payload):
             self.payload = payload
 
