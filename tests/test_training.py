@@ -143,8 +143,21 @@ def test_labeling_queue_only_bangles_and_bracelets():
                      image_urls=[f"https://x/{item_id}.jpg"]),
                 matched=False, confidence=0.4, reasoning="seen",
             )
+        # A gold-filled lot where the scanner already spotted a bangle inside.
+        service.store.record(
+            Item(item_id="lot1", title="Gold filled jewelry lot 10 pieces",
+                 image_urls=["https://x/lot1.jpg"]),
+            matched=True, confidence=0.7,
+            reasoning="[Lot] wide gold bangle, photo 2",
+        )
+        # A matched ring lot must NOT come through (its bangle reasoning absent).
+        service.store.record(
+            Item(item_id="lot2", title="Gold ring lot",
+                 image_urls=["https://x/lot2.jpg"]),
+            matched=True, confidence=0.7, reasoning="just rings",
+        )
         ids = {i["item_id"] for i in client.get("/api/queue").json()["items"]}
-        assert ids == {"b1", "b2"}  # chain + ring lot stay out of the queue
+        assert ids == {"b1", "b2", "lot1"}
     finally:
         service.store.close()
         os.remove(path)

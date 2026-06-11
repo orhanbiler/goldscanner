@@ -272,13 +272,20 @@ class SeenStore:
             return cur.rowcount > 0
 
     def labeling_queue(
-        self, limit: int = 40, title_keywords: list[str] | None = None
+        self,
+        limit: int = 40,
+        title_keywords: list[str] | None = None,
+        include_matched_lots: bool = True,
     ) -> list[dict]:
         """Items with a photo that haven't been labeled yet (matched first).
 
         `title_keywords` restricts the queue to relevant item types (e.g. only
         bangles/bracelets) so training labels stay focused — chains, rings,
         etc. from broad scan queries are kept out of the queue.
+
+        `include_matched_lots` also lets through multi-item lots where the
+        scanner already spotted a matching bangle (reasoning starts "[Lot]"),
+        even when "bangle" isn't in the lot's title.
         """
         query = """
             SELECT i.* FROM items i
@@ -286,10 +293,16 @@ class SeenStore:
             WHERE i.image_url IS NOT NULL AND e.id IS NULL
         """
         params: list = []
+        relevance: list[str] = []
         if title_keywords:
-            clauses = " OR ".join("lower(i.title) LIKE ?" for _ in title_keywords)
-            query += f" AND ({clauses})"
+            relevance.append(
+                "(" + " OR ".join("lower(i.title) LIKE ?" for _ in title_keywords) + ")"
+            )
             params.extend(f"%{kw.lower()}%" for kw in title_keywords)
+        if include_matched_lots:
+            relevance.append("(i.matched = 1 AND i.reasoning LIKE '[Lot]%')")
+        if relevance:
+            query += " AND (" + " OR ".join(relevance) + ")"
         query += " ORDER BY i.matched DESC, i.first_seen DESC LIMIT ?"
         params.append(limit)
         with self._lock:
