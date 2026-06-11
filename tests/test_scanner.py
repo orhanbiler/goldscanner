@@ -10,9 +10,10 @@ from goldscanner.store import SeenStore
 
 
 class FakeClient:
-    def __init__(self, pages):
+    def __init__(self, pages, description=""):
         # pages: dict[query] -> list[list[Item]] (one inner list per page)
         self.pages = pages
+        self.description = description
         self.detail_calls = []
 
     def search(self, query, page=1, page_size=40):
@@ -20,9 +21,9 @@ class FakeClient:
         idx = page - 1
         return per_query[idx] if idx < len(per_query) else []
 
-    def fetch_detail_images(self, item_id, limit=5):
+    def fetch_detail(self, item_id, image_limit=5):
         self.detail_calls.append(item_id)
-        return []
+        return {"images": [], "description": self.description}
 
     def download_image(self, url):
         return None
@@ -151,6 +152,40 @@ def test_lot_listings_get_bigger_photo_budget():
         # Detail-image fetch used the same per-item limit.
         assert set(client.detail_calls) == {"L1", "S1"}
         assert len(matches) == 2
+    finally:
+        store.close()
+        os.remove(path)
+
+
+def test_description_fed_to_scorer_and_gold_fields_stored():
+    store, path = make_store()
+    try:
+        items = [Item(item_id="1", title="Gold filled bangle")]
+        client = FakeClient({"bangle": [items]}, description="Tested 14K, 13.7g")
+
+        class GoldScorer:
+            def __init__(self):
+                self.seen_descriptions = {}
+
+            def score(self, item, max_images=None):
+                self.seen_descriptions[item.item_id] = item.description
+                return Score(
+                    True, 0.9, "reads 14K",
+                    gold_type="solid_gold", karat="14K", hallmark="14K",
+                )
+
+        scorer = GoldScorer()
+        scanner = Scanner(base_config(), client, store, scorer)
+        matches = scanner.scan_once()
+
+        # The seller description reached the model…
+        assert scorer.seen_descriptions["1"] == "Tested 14K, 13.7g"
+        # …and the structured gold verdict was persisted.
+        row = store.get_item("1")
+        assert (row["gold_type"], row["karat"], row["hallmark"]) == (
+            "solid_gold", "14K", "14K",
+        )
+        assert len(matches) == 1
     finally:
         store.close()
         os.remove(path)

@@ -72,6 +72,58 @@ def test_unedited_v1_guidance_upgrades_to_v2():
         os.remove(path)
 
 
+def test_rescore_promotes_rejected_items():
+    from goldscanner.models import Item, Score
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        svc = Service(_cfg(path, seed_defaults=False))
+        # Two scored rejects in the backlog.
+        for i, conf in (("r1", 0.3), ("r2", 0.2)):
+            svc.store.record(
+                Item(item_id=i, title=f"Bangle {i}",
+                     image_urls=[f"https://x/{i}.jpg"], url=f"https://x/{i}"),
+                matched=False, confidence=conf, reasoning="old verdict",
+            )
+
+        class FlipScorer:
+            def score(self, item, max_images=None):
+                # New training says r1 is a match now; r2 still isn't.
+                if item.item_id == "r1":
+                    return Score(True, 0.9, "matches now",
+                                 gold_type="gold_filled", karat="1/20 12K GF")
+                return Score(False, 0.2, "still no")
+
+        svc.config.use_ai = True
+        svc.scorer = FlipScorer()
+        svc.scanner.scorer = FlipScorer()
+
+        rows = svc.store.rescore_candidates()
+        assert len(rows) == 2
+        svc._rescore_rows(rows)  # run synchronously for the test
+
+        r1 = svc.store.get_item("r1")
+        assert r1["matched"] == 1 and r1["status"] == "new"
+        assert r1["gold_type"] == "gold_filled"
+        assert svc.store.get_item("r2")["matched"] == 0
+        assert svc.store.counts()["matched"] == 1
+        svc.store.close()
+    finally:
+        os.remove(path)
+
+
+def test_start_rescore_refuses_without_ai():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        svc = Service(_cfg(path, seed_defaults=False))  # use_ai=False
+        assert svc.start_rescore() == -1
+        svc.store.close()
+    finally:
+        os.remove(path)
+
+
 def test_edited_guidance_survives_upgrade():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

@@ -11,6 +11,9 @@ export interface Item {
   matched: number;
   confidence: number | null;
   reasoning: string | null;
+  gold_type: string | null;
+  karat: string | null;
+  hallmark: string | null;
   status: string;
 }
 
@@ -86,6 +89,11 @@ export const api = {
       body: JSON.stringify({ status }),
     }).then(j<{ ok: boolean; counts: Counts }>),
   scan: () => fetch("/api/scan", { method: "POST" }),
+  rescore: () =>
+    fetch("/api/rescore", { method: "POST" }).then(async (r) => ({
+      ok: r.ok,
+      body: (await r.json()) as { ok: boolean; queued?: number; reason?: string },
+    })),
   queue: (limit = 40) =>
     fetch(`/api/queue?limit=${limit}`).then(j<{ items: Item[] }>),
   examples: (label?: string) =>

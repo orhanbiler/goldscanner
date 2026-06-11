@@ -15,6 +15,7 @@ from .config import Config, db_is_persistent
 from .ebay import EbayClient
 from .emailer import Emailer
 from .etsy import EtsyClient
+from .models import Item
 from .scanner import Scanner
 from .store import SETTING_GUIDANCE, SeenStore
 from .vision import VisionScorer
@@ -138,6 +139,7 @@ class Service:
         self.last_scan_at: float | None = None
         self.last_scan_matches: int = 0
         self.scanning: bool = False
+        self.rescoring: bool = False
 
     def _log_persistence(self) -> None:
         path = self.config.db_path
@@ -252,6 +254,81 @@ class Service:
             finally:
                 self.scanning = False
 
+    # -- re-scoring ----------------------------------------------------------
+
+    def start_rescore(self, limit: int | None = None) -> int:
+        """Kick off a background re-score of previously rejected items.
+
+        Returns the number queued, 0 if nothing to do, or -1 if busy/unavailable.
+        """
+        if self.scanning or self.rescoring:
+            return -1
+        if not self.config.use_ai or self.scorer is None:
+            return -1
+        rows = self.store.rescore_candidates(limit or self.config.rescore_limit)
+        if not rows:
+            return 0
+        thread = threading.Thread(
+            target=self._rescore_rows, args=(rows,), name="rescore", daemon=True
+        )
+        thread.start()
+        return len(rows)
+
+    def _rescore_rows(self, rows: list[dict]) -> None:
+        with self._scan_lock:
+            self.rescoring = True
+            try:
+                self.activity.add(
+                    f"♻️ Re-scoring {len(rows)} previously rejected item(s) with "
+                    "your current training (guidance + labeled examples)…",
+                    SUCCESS,
+                )
+                promoted = 0
+                for row in rows:
+                    item = Item(
+                        item_id=row["item_id"],
+                        title=row["title"] or "",
+                        source=row.get("source") or "shopgoodwill",
+                        current_price=row.get("price"),
+                        end_time=row.get("end_time"),
+                        image_urls=[row["image_url"]] if row.get("image_url") else [],
+                        url=row.get("url") or "",
+                    )
+                    score = self.scanner._score(item)  # noqa: SLF001 - internal reuse
+                    if score.reasoning.startswith("Scoring error"):
+                        continue  # transient failure; keep the old verdict
+                    matched = (
+                        score.is_match
+                        and score.confidence >= self.config.min_confidence
+                    )
+                    self.store.apply_rescore(
+                        item.item_id,
+                        matched=matched,
+                        confidence=score.confidence,
+                        reasoning=score.reasoning,
+                        gold_type=score.gold_type,
+                        karat=score.karat,
+                        hallmark=score.hallmark,
+                    )
+                    if matched:
+                        promoted += 1
+                        self.activity.add(
+                            f"♻️✅ Changed verdict to MATCH "
+                            f"({round(score.confidence * 100)}%): "
+                            f'"{item.title[:70]}"',
+                            SUCCESS,
+                        )
+                self.activity.add(
+                    f"♻️ Re-score finished: {len(rows)} item(s) reviewed, "
+                    f"{promoted} promoted to candidates.",
+                    SUCCESS if promoted else "info",
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Re-score failed: %s", exc)
+                self.activity.add(f"❌ Re-score hit an error: {exc}", WARN)
+            finally:
+                self.rescoring = False
+
     def run_loop(self) -> None:
         """Blocking scan loop until stop() is called."""
         srcs = ", ".join(self._source_names())
@@ -293,6 +370,7 @@ class Service:
             "last_scan_at": self.last_scan_at,
             "last_scan_matches": self.last_scan_matches,
             "scanning": self.scanning,
+            "rescoring": self.rescoring,
             "interval_seconds": self.config.interval_seconds,
             "use_ai": self.config.use_ai,
             "queries": self.config.queries,

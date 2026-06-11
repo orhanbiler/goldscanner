@@ -6,7 +6,9 @@ buyerapi.shopgoodwill.com. Searching is public (no login required); we only read
 
 from __future__ import annotations
 
+import html as html_module
 import logging
+import re
 
 import requests
 
@@ -43,6 +45,19 @@ def sniff_media_type(data: bytes, fallback: str = "image/jpeg") -> str:
     return fallback
 
 
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def strip_html(raw: str | None, max_len: int = 1500) -> str:
+    """Reduce seller HTML to compact plain text for the model prompt."""
+    if not raw:
+        return ""
+    text = _TAG_RE.sub(" ", str(raw))
+    text = html_module.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_len]
+
+
 def _abs_image(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -77,12 +92,14 @@ class ShopGoodwillClient:
         raw_items = (data.get("searchResults") or {}).get("items") or []
         return [self._normalize(raw) for raw in raw_items]
 
-    def fetch_detail_images(self, item_id: str, limit: int = 5) -> list[str]:
-        """Fetch additional photo URLs for an item from its detail page.
+    def fetch_detail(self, item_id: str, image_limit: int = 5) -> dict:
+        """Fetch an item's detail page: extra photo URLs + seller description.
 
-        Best-effort: returns [] on any failure rather than raising, so a single
-        bad item never breaks a scan.
+        Returns {"images": [...], "description": str}. Best-effort: any failure
+        returns empty values rather than raising, so one bad item never breaks
+        a scan.
         """
+        empty = {"images": [], "description": ""}
         try:
             resp = self.session.get(
                 f"{ITEM_DETAIL_URL}/{item_id}", timeout=self.timeout
@@ -91,7 +108,7 @@ class ShopGoodwillClient:
             data = resp.json()
         except Exception as exc:  # noqa: BLE001 - best effort
             log.debug("detail fetch failed for %s: %s", item_id, exc)
-            return []
+            return empty
 
         urls: list[str] = []
         for key in ("imageUrlString", "imageUrl"):
@@ -105,7 +122,14 @@ class ShopGoodwillClient:
             abs_url = _abs_image(candidate)
             if abs_url and abs_url not in urls:
                 urls.append(abs_url)
-        return urls[:limit]
+        return {
+            "images": urls[:image_limit],
+            "description": strip_html(data.get("description")),
+        }
+
+    def fetch_detail_images(self, item_id: str, limit: int = 5) -> list[str]:
+        """Back-compat wrapper around fetch_detail()."""
+        return self.fetch_detail(item_id, image_limit=limit)["images"]
 
     def download_image(self, url: str) -> tuple[bytes, str] | None:
         """Download an image. Returns (bytes, media_type) or None on failure."""

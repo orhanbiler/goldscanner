@@ -57,6 +57,9 @@ class SeenStore:
                     matched     INTEGER NOT NULL DEFAULT 0,
                     confidence  REAL,
                     reasoning   TEXT,
+                    gold_type   TEXT,
+                    karat       TEXT,
+                    hallmark    TEXT,
                     status      TEXT NOT NULL DEFAULT 'new',
                     first_seen  REAL NOT NULL,
                     updated     REAL NOT NULL
@@ -82,13 +85,16 @@ class SeenStore:
                 );
                 """
             )
-            # Migration for databases created before the multi-source change.
+            # Migrations for databases created by earlier versions.
             cols = [r[1] for r in self._conn.execute("PRAGMA table_info(items)")]
             if "source" not in cols:
                 self._conn.execute(
                     "ALTER TABLE items ADD COLUMN source TEXT NOT NULL "
                     "DEFAULT 'shopgoodwill'"
                 )
+            for col in ("gold_type", "karat", "hallmark"):
+                if col not in cols:
+                    self._conn.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
             self._conn.commit()
 
     # -- dedupe / items ------------------------------------------------------
@@ -100,15 +106,25 @@ class SeenStore:
             )
             return cur.fetchone() is not None
 
-    def record(self, item, matched: bool, confidence: float | None, reasoning: str) -> None:
+    def record(
+        self,
+        item,
+        matched: bool,
+        confidence: float | None,
+        reasoning: str,
+        gold_type: str | None = None,
+        karat: str | None = None,
+        hallmark: str | None = None,
+    ) -> None:
         now = time.time()
         with self._lock:
             self._conn.execute(
                 """
                 INSERT OR IGNORE INTO items
                     (item_id, source, title, price, end_time, num_bids, image_url, url,
-                     matched, confidence, reasoning, status, first_seen, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     matched, confidence, reasoning, gold_type, karat, hallmark,
+                     status, first_seen, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(item.item_id),
@@ -122,12 +138,73 @@ class SeenStore:
                     1 if matched else 0,
                     confidence,
                     reasoning,
+                    gold_type,
+                    karat,
+                    hallmark,
                     STATUS_NEW,
                     now,
                     now,
                 ),
             )
             self._conn.commit()
+
+    # -- re-scoring ------------------------------------------------------------
+
+    def rescore_candidates(self, limit: int = 150) -> list[dict]:
+        """Previously AI-scored rejects, newest first — the re-score backlog."""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT * FROM items
+                WHERE matched = 0 AND confidence IS NOT NULL AND image_url IS NOT NULL
+                ORDER BY first_seen DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def apply_rescore(
+        self,
+        item_id: str,
+        matched: bool,
+        confidence: float | None,
+        reasoning: str,
+        gold_type: str | None = None,
+        karat: str | None = None,
+        hallmark: str | None = None,
+    ) -> bool:
+        """Overwrite an item's verdict; promote rejected→matched as 'new'."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT matched, status FROM items WHERE item_id = ?",
+                (str(item_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            status = row["status"]
+            if matched and not row["matched"]:
+                status = STATUS_NEW
+            self._conn.execute(
+                """
+                UPDATE items SET matched = ?, confidence = ?, reasoning = ?,
+                    gold_type = ?, karat = ?, hallmark = ?, status = ?, updated = ?
+                WHERE item_id = ?
+                """,
+                (
+                    1 if matched else 0,
+                    confidence,
+                    reasoning,
+                    gold_type,
+                    karat,
+                    hallmark,
+                    status,
+                    time.time(),
+                    str(item_id),
+                ),
+            )
+            self._conn.commit()
+            return True
 
     def list_matches(self, status: str | None = None) -> list[dict]:
         query = "SELECT * FROM items WHERE matched = 1"

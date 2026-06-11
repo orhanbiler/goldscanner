@@ -1,4 +1,17 @@
-from goldscanner.client import ShopGoodwillClient, _abs_image, sniff_media_type
+from goldscanner.client import (
+    ShopGoodwillClient,
+    _abs_image,
+    sniff_media_type,
+    strip_html,
+)
+
+
+def test_strip_html():
+    raw = "<p>Tested <b>14K</b> gold.&nbsp;Weighs 13.7g</p><br><div>Hinged bangle</div>"
+    assert strip_html(raw) == "Tested 14K gold. Weighs 13.7g Hinged bangle"
+    assert strip_html(None) == ""
+    assert strip_html("plain text") == "plain text"
+    assert len(strip_html("x" * 5000, max_len=100)) == 100
 
 
 def test_sniff_media_type_detects_real_format():

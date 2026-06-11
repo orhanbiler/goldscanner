@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { CandidateCard } from "@/components/CandidateCard";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsContent, TabsTrigger } from "@/components/ui/tabs";
 import { api, type Counts, type Item } from "@/lib/api";
 
@@ -53,6 +54,23 @@ export function CandidatesView({ counts, onChanged }: Props) {
       onChanged();
     } catch {
       toast.error("Something went wrong");
+    }
+  }
+
+  async function rescore() {
+    try {
+      const { ok, body } = await api.rescore();
+      if (ok) {
+        toast.success(
+          body.queued
+            ? `Re-scoring ${body.queued} rejected item(s) — watch the Activity tab`
+            : "Nothing to re-score yet",
+        );
+      } else {
+        toast.message(body.reason ?? "Busy — try again in a moment");
+      }
+    } catch {
+      toast.error("Could not start re-score");
     }
   }
 
@@ -109,11 +127,16 @@ export function CandidatesView({ counts, onChanged }: Props) {
           ) : (
             <>
               {filter === "rejected" && (
-                <p className="mb-3 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  Everything the scanner examined but didn't surface — with the
-                  AI's reasoning. If it got one wrong, promote it: that also
-                  teaches the AI it's a match.
-                </p>
+                <div className="mb-3 flex flex-col gap-2 rounded-md border bg-muted/40 px-3 py-2 sm:flex-row sm:items-center">
+                  <p className="flex-1 text-xs text-muted-foreground">
+                    Everything the scanner examined but didn't surface — with the
+                    AI's reasoning. If it got one wrong, promote it: that also
+                    teaches the AI it's a match.
+                  </p>
+                  <Button size="sm" variant="outline" onClick={rescore}>
+                    <RotateCcw /> Re-score with current training
+                  </Button>
+                </div>
               )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((it) => (

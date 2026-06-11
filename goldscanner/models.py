@@ -19,6 +19,8 @@ class Item:
     image_urls: list[str] = field(default_factory=list)
     # Link to the listing page. Set by the source client.
     url: str = ""
+    # Seller-provided description text (plain text, source-dependent).
+    description: str | None = None
 
 
 @dataclass
@@ -28,6 +30,10 @@ class Score:
     is_match: bool
     confidence: float
     reasoning: str
+    # Structured gold assessment (from description text + hallmark photos).
+    gold_type: str = "unknown"  # solid_gold | gold_filled | gold_plated | not_gold | unknown
+    karat: str | None = None      # e.g. "14K", "1/20 12K GF"
+    hallmark: str | None = None   # stamp text actually read in the photos
 
     @classmethod
     def keyword_only(cls) -> "Score":

@@ -66,6 +66,9 @@ class Scanner:
                 matched=matched,
                 confidence=score.confidence,
                 reasoning=score.reasoning,
+                gold_type=score.gold_type,
+                karat=score.karat,
+                hallmark=score.hallmark,
             )
             pct = round(score.confidence * 100)
             if matched:
@@ -166,11 +169,14 @@ class Scanner:
             if self._looks_like_lot(item.title)
             else self.config.max_images_per_item
         )
-        # Enrich with detail photos for a better visual judgment
-        # (shopgoodwill only — its detail API takes the bare item id).
+        # Enrich with detail photos + the seller's description, both strong
+        # evidence for the gold question (shopgoodwill only — its detail API
+        # takes the bare item id).
         if item.source == "shopgoodwill":
-            detail = self.client.fetch_detail_images(item.item_id, limit=limit)
-            for url in detail:
+            detail = self.client.fetch_detail(item.item_id, image_limit=limit)
+            if not item.description:
+                item.description = detail.get("description") or None
+            for url in detail.get("images", []):
                 if url not in item.image_urls:
                     item.image_urls.append(url)
         return self.scorer.score(item, max_images=limit)

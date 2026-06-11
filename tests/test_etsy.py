@@ -71,8 +71,8 @@ class FakeSG:
     def search(self, query, page=1, page_size=40):
         return []
 
-    def fetch_detail_images(self, item_id, limit=5):
-        return []
+    def fetch_detail(self, item_id, image_limit=5):
+        return {"images": [], "description": ""}
 
 
 class FakeSource:

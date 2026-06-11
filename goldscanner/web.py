@@ -137,10 +137,23 @@ def create_app(service: Service) -> FastAPI:
 
     @app.post("/api/scan")
     def api_scan() -> JSONResponse:
-        if service.scanning:
-            return JSONResponse({"ok": False, "reason": "already scanning"}, status_code=409)
+        if service.scanning or service.rescoring:
+            return JSONResponse({"ok": False, "reason": "already busy"}, status_code=409)
         matches = service.scan_once()
         return JSONResponse({"ok": True, "matches": matches})
+
+    @app.post("/api/rescore")
+    def api_rescore() -> JSONResponse:
+        if not service.config.use_ai:
+            return JSONResponse(
+                {"ok": False, "reason": "AI scoring is disabled"}, status_code=400
+            )
+        queued = service.start_rescore()
+        if queued < 0:
+            return JSONResponse(
+                {"ok": False, "reason": "already busy"}, status_code=409
+            )
+        return JSONResponse({"ok": True, "queued": queued})
 
     # -- training / labeling ----------------------------------------------
 

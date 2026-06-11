@@ -14,6 +14,20 @@ interface Props {
   onPromote?: (id: string, status: string) => void;
 }
 
+const GOLD_LABELS: Record<string, string> = {
+  solid_gold: "Solid gold",
+  gold_filled: "Gold-filled",
+  gold_plated: "Plated / gold-tone",
+  not_gold: "Not gold",
+};
+
+function goldVerdict(item: Item): string | null {
+  const type = item.gold_type ? GOLD_LABELS[item.gold_type] : undefined;
+  if (!type && !item.karat) return null;
+  if (item.karat && type) return `${item.karat} · ${type}`;
+  return item.karat ?? type ?? null;
+}
+
 export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props) {
   const scored = item.confidence != null;
   const conf = Math.round((item.confidence ?? 0) * 100);
@@ -103,6 +117,28 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
               Skipped by title filter (not scored)
             </Badge>
           )
+        )}
+
+        {goldVerdict(item) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 font-semibold",
+                item.gold_type === "solid_gold"
+                  ? "border-success/40 bg-success/10 text-success"
+                  : item.gold_type === "gold_filled"
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-muted text-muted-foreground",
+              )}
+            >
+              🥇 {goldVerdict(item)}
+            </span>
+            {item.hallmark && (
+              <span className="text-muted-foreground">
+                stamp: “{item.hallmark}”
+              </span>
+            )}
+          </div>
         )}
 
         {item.reasoning && (

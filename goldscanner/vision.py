@@ -34,6 +34,29 @@ _SCHEMA = {
             "type": "boolean",
             "description": "True if this listing is a multi-item jewelry lot rather than a single piece.",
         },
+        "gold_type": {
+            "type": "string",
+            "enum": ["solid_gold", "gold_filled", "gold_plated", "not_gold", "unknown"],
+            "description": (
+                "Best assessment of the metal from hallmarks, the seller's "
+                "description (tested/marked claims), and visual cues."
+            ),
+        },
+        "karat": {
+            "type": "string",
+            "description": (
+                "Karat/fineness if determinable, e.g. '14K', '10K', '1/20 12K GF', "
+                "'18K'. Empty string if unknown."
+            ),
+        },
+        "hallmark_read": {
+            "type": "string",
+            "description": (
+                "The exact stamp/hallmark text you can actually READ in the photos "
+                "(e.g. '14K', '585', 'HAYWARD 1/20 12K GF'). Empty string if no "
+                "stamp is legible."
+            ),
+        },
         "is_match": {
             "type": "boolean",
             "description": (
@@ -55,6 +78,9 @@ _SCHEMA = {
         "is_gold_filled_bangle",
         "has_enamel",
         "is_lot",
+        "gold_type",
+        "karat",
+        "hallmark_read",
         "is_match",
         "confidence",
         "reasoning",
@@ -119,10 +145,16 @@ class VisionScorer:
         reasoning = str(data.get("reasoning", ""))
         if data.get("is_lot"):
             reasoning = "[Lot] " + reasoning
+        gold_type = str(data.get("gold_type") or "unknown")
+        if gold_type not in {"solid_gold", "gold_filled", "gold_plated", "not_gold", "unknown"}:
+            gold_type = "unknown"
         return Score(
             is_match=bool(data.get("is_match")),
             confidence=float(data.get("confidence", 0.0) or 0.0),
             reasoning=reasoning,
+            gold_type=gold_type,
+            karat=(str(data.get("karat") or "").strip() or None),
+            hallmark=(str(data.get("hallmark_read") or "").strip() or None),
         )
 
     # -- prompt building -----------------------------------------------------
@@ -136,6 +168,21 @@ class VisionScorer:
         if guidance:
             parts.append(f"\nADDITIONAL GUIDANCE FROM THE USER:\n{guidance}")
         parts.append(f'\nThis listing\'s title: "{item.title}"')
+        if item.description:
+            parts.append(
+                f'\nSeller\'s description: """{item.description}"""\n'
+                "Treat explicit claims in the description as STRONG evidence: "
+                "'tested 14K' / 'acid tested' / 'marked 1/20 12K GF' usually "
+                "settle the metal question. Note stated weight in grams if given."
+            )
+        parts.append(
+            "\nHALLMARK HUNT: sellers usually include a close-up photo of the "
+            "karat stamp. Look for it and READ it. Decoder: 14K/585, 10K/417, "
+            "18K/750 = solid gold; '1/20 12K GF', 'GF' = gold-filled; 'RGP' = "
+            "rolled gold plate; 'HGE', 'GE', 'gold tone' = plated/costume; "
+            "'925'/'STERLING' = silver, NOT gold. Report what you read in "
+            "hallmark_read and set gold_type and karat accordingly."
+        )
         parts.append(
             "\nIMPORTANT — MULTI-ITEM LOTS: some listings are lots of many jewelry "
             "pieces photographed together. If this is a lot, examine EVERY photo "

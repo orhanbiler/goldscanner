@@ -112,6 +112,9 @@ class Config:
     ebay_marketplace: str = "EBAY_US"
     ebay_limit: int = 50
 
+    # Max previously-rejected items re-evaluated per "re-score" run.
+    rescore_limit: int = 150
+
     # Seed the built-in guidance (antique enamel bangles) into the DB on first run.
     seed_defaults: bool = True
 
@@ -194,6 +197,7 @@ class Config:
             ),
             ebay_marketplace=os.environ.get("EBAY_MARKETPLACE", "EBAY_US"),
             ebay_limit=_int("GOLDSCANNER_EBAY_LIMIT", 50),
+            rescore_limit=_int("GOLDSCANNER_RESCORE_LIMIT", 150),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
             db_path=resolve_db_path(
                 os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db")
