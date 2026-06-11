@@ -96,9 +96,9 @@ class Service:
         self.last_scan_matches: int = 0
         self.scanning: bool = False
 
-    @staticmethod
-    def _build_sources(config: Config) -> list:
+    def _build_sources(self, config: Config) -> list:
         sources: list = []
+        self.source_notes: dict[str, str] = {}
         if config.etsy_enabled and (config.etsy_api_key or config.etsy_urls):
             sources.append(
                 EtsyClient(
@@ -109,11 +109,14 @@ class Service:
                 )
             )
             if not config.etsy_api_key:
-                log.warning(
-                    "Etsy is in scrape mode (no ETSY_API_KEY) — Etsy's bot "
-                    "protection often blocks cloud IPs, so results may be empty. "
-                    "Set ETSY_API_KEY for reliable results."
+                self.source_notes["etsy"] = (
+                    "scrape mode — set ETSY_API_KEY (free at etsy.com/developers) "
+                    "for reliable results; cloud IPs are usually bot-blocked"
                 )
+                log.warning("Etsy is in scrape mode (no ETSY_API_KEY); results may be empty.")
+        elif config.etsy_enabled:
+            self.source_notes["etsy"] = "disabled — no ETSY_API_KEY or URLs configured"
+
         if config.ebay_enabled and config.ebay_client_id and config.ebay_client_secret:
             sources.append(
                 EbayClient(
@@ -125,9 +128,13 @@ class Service:
                 )
             )
         elif config.ebay_enabled:
+            self.source_notes["ebay"] = (
+                "not configured — set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET "
+                "(free at developer.ebay.com)"
+            )
             log.warning(
                 "eBay is enabled but EBAY_CLIENT_ID/EBAY_CLIENT_SECRET are not "
-                "set — skipping eBay. Get free keys at https://developer.ebay.com"
+                "set — skipping eBay."
             )
         return sources
 
@@ -196,6 +203,8 @@ class Service:
             "use_ai": self.config.use_ai,
             "queries": self.config.queries,
             "sources": self._source_names(),
+            "source_stats": self.scanner.last_source_stats,
+            "source_notes": self.source_notes,
         }
 
     def _source_names(self) -> list[str]:

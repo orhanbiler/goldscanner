@@ -130,6 +130,38 @@ def test_scanner_includes_extra_source_items():
         os.remove(path)
 
 
+def test_scanner_records_source_stats():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    store = SeenStore(path)
+    try:
+        good = FakeSource(
+            [Item(item_id="etsy-5", title="bangle", source="etsy",
+                  image_urls=["https://x/i.jpg"], url="https://x")]
+        )
+        good.name = "etsy"
+
+        class Bad:
+            name = "ebay"
+
+            def fetch_items(self):
+                raise RuntimeError("oauth failed")
+
+        cfg = Config(queries=[], title_keywords=[], use_ai=False,
+                     email_enabled=False)
+        scanner = Scanner(cfg, FakeSG(), store, None, extra_sources=[good, Bad()])
+        scanner.scan_once()
+
+        stats = scanner.last_source_stats
+        assert stats["etsy"] == {"fetched": 1, "error": None}
+        assert stats["ebay"]["fetched"] == 0
+        assert "oauth failed" in stats["ebay"]["error"]
+        assert stats["shopgoodwill"]["fetched"] == 0
+    finally:
+        store.close()
+        os.remove(path)
+
+
 def test_failing_source_does_not_break_scan():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

@@ -30,6 +30,8 @@ SCOPE = "https://api.ebay.com/oauth/api_scope"
 
 
 class EbayClient:
+    name = "ebay"
+
     def __init__(
         self,
         client_id: str,
@@ -48,8 +50,11 @@ class EbayClient:
         self.session = requests.Session()
         self._token: str | None = None
         self._token_expiry: float = 0.0
+        # Human-readable reason the last fetch returned little/nothing.
+        self.last_error: str | None = None
 
     def fetch_items(self) -> list[Item]:
+        self.last_error = None
         token = self._get_token()
         if not token:
             return []
@@ -84,6 +89,7 @@ class EbayClient:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:  # noqa: BLE001
+            self.last_error = f"oauth failed (check EBAY_CLIENT_ID/SECRET): {exc}"
             log.warning("ebay oauth failed (check EBAY_CLIENT_ID/SECRET): %s", exc)
             return None
         self._token = data.get("access_token")
@@ -107,6 +113,7 @@ class EbayClient:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:  # noqa: BLE001
+            self.last_error = f"search failed: {exc}"
             log.warning("ebay search failed (q=%r): %s", query, exc)
             return []
         return data.get("itemSummaries") or []

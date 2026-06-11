@@ -35,9 +35,12 @@ _LDJSON_RE = re.compile(
 _LISTING_ID_RE = re.compile(r"/listing/(\d+)")
 
 ETSY_API_URL = "https://openapi.etsy.com/v3/application/listings/active"
+ETSY_BATCH_URL = "https://openapi.etsy.com/v3/application/listings/batch"
 
 
 class EtsyClient:
+    name = "etsy"
+
     def __init__(
         self,
         urls: list[str] | None = None,
@@ -51,6 +54,8 @@ class EtsyClient:
         self.queries = queries or []
         self.limit = max(1, min(limit, 100))
         self.timeout = timeout
+        # Human-readable reason the last fetch returned little/nothing.
+        self.last_error: str | None = None
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -62,6 +67,7 @@ class EtsyClient:
 
     def fetch_items(self) -> list[Item]:
         """Uniform entry point used by the scanner."""
+        self.last_error = None
         if self.api_key:
             return self._fetch_via_api()
         items: list[Item] = []
@@ -71,21 +77,48 @@ class EtsyClient:
                 if item.item_id not in seen:
                     seen.add(item.item_id)
                     items.append(item)
+        if not items and self.last_error is None:
+            self.last_error = (
+                "scrape mode returned nothing (Etsy bot protection likely "
+                "blocks this host) — set ETSY_API_KEY"
+            )
         return items
 
     # -- API mode ------------------------------------------------------------
 
     def _fetch_via_api(self) -> list[Item]:
-        items: list[Item] = []
-        seen: set[str] = set()
+        # 1) Search returns listings WITHOUT images; collect ids first.
+        ids: list[int] = []
         for query in self.queries:
             try:
                 resp = self.session.get(
                     ETSY_API_URL,
                     headers={"x-api-key": self.api_key},
+                    params={"keywords": query, "limit": self.limit},
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:  # noqa: BLE001
+                self.last_error = f"api search failed: {exc}"
+                log.warning("etsy api search failed (q=%r): %s", query, exc)
+                continue
+            for raw in data.get("results") or []:
+                lid = raw.get("listing_id")
+                if lid and lid not in ids:
+                    ids.append(lid)
+
+        # 2) Batch-fetch full listings WITH images (max 100 ids per call).
+        items: list[Item] = []
+        seen: set[str] = set()
+        for start in range(0, len(ids), 100):
+            chunk = ids[start : start + 100]
+            try:
+                resp = self.session.get(
+                    ETSY_BATCH_URL,
+                    headers={"x-api-key": self.api_key},
                     params={
-                        "keywords": query,
-                        "limit": self.limit,
+                        "listing_ids": ",".join(str(i) for i in chunk),
                         "includes": "Images",
                     },
                     timeout=self.timeout,
@@ -93,7 +126,8 @@ class EtsyClient:
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as exc:  # noqa: BLE001
-                log.warning("etsy api search failed (q=%r): %s", query, exc)
+                self.last_error = f"api batch fetch failed: {exc}"
+                log.warning("etsy api batch failed: %s", exc)
                 continue
             for raw in data.get("results") or []:
                 item = self._normalize_api(raw)
@@ -146,9 +180,11 @@ class EtsyClient:
         try:
             resp = self.session.get(url, timeout=self.timeout)
         except Exception as exc:  # noqa: BLE001
+            self.last_error = f"fetch failed: {exc}"
             log.warning("etsy fetch failed (%s): %s", url, exc)
             return []
         if resp.status_code != 200:
+            self.last_error = f"HTTP {resp.status_code} (bot protection)"
             log.warning(
                 "etsy returned HTTP %s for %s (likely bot protection)",
                 resp.status_code,

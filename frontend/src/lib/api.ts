@@ -50,6 +50,8 @@ export interface Status {
   use_ai: boolean;
   queries: string[];
   sources: string[];
+  source_stats: Record<string, { fetched: number; error: string | null }>;
+  source_notes: Record<string, string>;
 }
 
 async function j<T>(res: Response): Promise<T> {

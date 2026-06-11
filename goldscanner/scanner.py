@@ -28,6 +28,8 @@ class Scanner:
         self.scorer = scorer
         # Each extra source exposes fetch_items() -> list[Item] (etsy, ebay, ...).
         self.extra_sources = extra_sources or []
+        # Per-source diagnostics from the most recent scan, for the UI.
+        self.last_source_stats: dict[str, dict] = {}
 
     def scan_once(self) -> list[tuple[Item, Score]]:
         """Run a full scan and return the list of newly matched (item, score)."""
@@ -69,6 +71,8 @@ class Scanner:
     def _iter_new_items(self):
         """Yield unseen items across all sources, de-duplicated this cycle."""
         seen_this_cycle: set[str] = set()
+        stats: dict[str, dict] = {}
+        self.last_source_stats = stats
 
         def fresh(items):
             for item in items:
@@ -80,23 +84,35 @@ class Scanner:
                 yield item
 
         # shopgoodwill search
+        sg_fetched = 0
+        sg_error: str | None = None
         for query in self.config.queries:
             for page in range(1, self.config.pages_per_query + 1):
                 try:
                     items = self.client.search(query, page=page)
                 except Exception as exc:  # noqa: BLE001
+                    sg_error = str(exc)
                     log.warning("search failed (query=%r page=%d): %s", query, page, exc)
                     break
                 if not items:
                     break
+                sg_fetched += len(items)
                 yield from fresh(items)
+        stats["shopgoodwill"] = {"fetched": sg_fetched, "error": sg_error}
 
         # other sources (etsy, ebay) — each best-effort
         for source in self.extra_sources:
+            name = getattr(source, "name", type(source).__name__.lower())
             try:
-                yield from fresh(source.fetch_items())
+                items = source.fetch_items()
+                stats[name] = {
+                    "fetched": len(items),
+                    "error": getattr(source, "last_error", None),
+                }
+                yield from fresh(items)
             except Exception as exc:  # noqa: BLE001
-                log.warning("source %s failed: %s", type(source).__name__, exc)
+                stats[name] = {"fetched": 0, "error": str(exc)}
+                log.warning("source %s failed: %s", name, exc)
 
     def _passes_prefilter(self, item: Item) -> bool:
         keywords = self.config.title_keywords

@@ -22,6 +22,47 @@ function useDarkMode() {
   return { dark, toggle: () => setDark((d) => !d) };
 }
 
+function SourceDiagnostics({ status }: { status: Status }) {
+  const stats = status.source_stats ?? {};
+  const notes = status.source_notes ?? {};
+  const names = Array.from(
+    new Set([...(status.sources ?? []), ...Object.keys(stats), ...Object.keys(notes)]),
+  ).map((n) => n.replace(" (scrape)", ""));
+  if (names.length === 0) return null;
+
+  return (
+    <div className="container flex flex-wrap gap-1.5 pb-2.5">
+      {names.map((name) => {
+        const stat = stats[name];
+        const note = notes[name];
+        const error = stat?.error ?? null;
+        const ok = stat && stat.fetched > 0 && !error;
+        const tone = ok
+          ? "border-success/40 bg-success/10 text-success"
+          : error || note
+            ? "border-destructive/30 bg-destructive/10 text-destructive"
+            : "border-border bg-muted text-muted-foreground";
+        const label = stat
+          ? error
+            ? `${name}: ${error}`
+            : `${name}: ${stat.fetched} fetched`
+          : note
+            ? `${name}: ${note}`
+            : `${name}: waiting for first scan`;
+        return (
+          <span
+            key={name}
+            className={`max-w-full truncate rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${tone}`}
+            title={label}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const { dark, toggle } = useDarkMode();
   const [status, setStatus] = useState<Status | null>(null);
@@ -90,13 +131,13 @@ export default function App() {
               {counts.matched} candidate(s) · {counts.seen} listings checked · last
               scan {timeAgo(status.last_scan_at)} ·{" "}
               {status.use_ai ? "AI scoring on" : "keyword-only"} ·{" "}
-              {status.examples.total} training example(s) · sources:{" "}
-              {(status.sources ?? []).join(", ")}
+              {status.examples.total} training example(s)
             </>
           ) : (
             "Loading…"
           )}
         </div>
+        {status && <SourceDiagnostics status={status} />}
       </header>
 
       <main className="container py-5">
