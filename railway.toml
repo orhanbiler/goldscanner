@@ -8,6 +8,9 @@ builder = "dockerfile"
 # Long-running worker; restart if it ever exits unexpectedly.
 restartPolicyType = "always"
 numReplicas = 1
+# Railway waits for this to return 200 before routing traffic to a new deploy.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 300
 
 # To persist the "already seen" database across deploys, add a Volume in the
 # Railway dashboard mounted at /data. GOLDSCANNER_DB_PATH defaults to
