@@ -1,5 +1,6 @@
 export interface Item {
   item_id: string;
+  source: string;
   title: string;
   price: string | null;
   end_time: string | null;
@@ -48,6 +49,8 @@ export interface Status {
   interval_seconds: number;
   use_ai: boolean;
   queries: string[];
+  etsy_enabled: boolean;
+  etsy_urls: string[];
 }
 
 async function j<T>(res: Response): Promise<T> {

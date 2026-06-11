@@ -20,11 +20,13 @@ class Scanner:
         client: ShopGoodwillClient,
         store: SeenStore,
         scorer: VisionScorer | None,
+        etsy=None,
     ):
         self.config = config
         self.client = client
         self.store = store
         self.scorer = scorer
+        self.etsy = etsy
 
     def scan_once(self) -> list[tuple[Item, Score]]:
         """Run a full scan and return the list of newly matched (item, score)."""
@@ -64,8 +66,19 @@ class Scanner:
     # -- internals -----------------------------------------------------------
 
     def _iter_new_items(self):
-        """Yield unseen items across all queries/pages, de-duplicated this cycle."""
+        """Yield unseen items across all sources, de-duplicated this cycle."""
         seen_this_cycle: set[str] = set()
+
+        def fresh(items):
+            for item in items:
+                if not item.item_id or item.item_id in seen_this_cycle:
+                    continue
+                seen_this_cycle.add(item.item_id)
+                if self.store.is_seen(item.item_id):
+                    continue
+                yield item
+
+        # shopgoodwill search
         for query in self.config.queries:
             for page in range(1, self.config.pages_per_query + 1):
                 try:
@@ -75,13 +88,12 @@ class Scanner:
                     break
                 if not items:
                     break
-                for item in items:
-                    if not item.item_id or item.item_id in seen_this_cycle:
-                        continue
-                    seen_this_cycle.add(item.item_id)
-                    if self.store.is_seen(item.item_id):
-                        continue
-                    yield item
+                yield from fresh(items)
+
+        # etsy market/search pages (best-effort)
+        if self.etsy is not None:
+            for url in self.config.etsy_urls:
+                yield from fresh(self.etsy.fetch_listings(url))
 
     def _passes_prefilter(self, item: Item) -> bool:
         keywords = self.config.title_keywords
@@ -93,11 +105,13 @@ class Scanner:
     def _score(self, item: Item) -> Score:
         if not self.config.use_ai or self.scorer is None:
             return Score.keyword_only()
-        # Enrich with detail photos for a better visual judgment.
-        detail = self.client.fetch_detail_images(
-            item.item_id, limit=self.config.max_images_per_item
-        )
-        for url in detail:
-            if url not in item.image_urls:
-                item.image_urls.append(url)
+        # Enrich with detail photos for a better visual judgment
+        # (shopgoodwill only — its detail API takes the bare item id).
+        if item.source == "shopgoodwill":
+            detail = self.client.fetch_detail_images(
+                item.item_id, limit=self.config.max_images_per_item
+            )
+            for url in detail:
+                if url not in item.image_urls:
+                    item.image_urls.append(url)
         return self.scorer.score(item)

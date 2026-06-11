@@ -12,6 +12,7 @@ import time
 from .client import ShopGoodwillClient
 from .config import Config
 from .emailer import Emailer
+from .etsy import EtsyClient
 from .scanner import Scanner
 from .store import SETTING_GUIDANCE, SeenStore
 from .vision import VisionScorer
@@ -79,7 +80,12 @@ class Service:
             if config.email_enabled
             else None
         )
-        self.scanner = Scanner(config, self.client, self.store, self.scorer)
+        self.etsy = (
+            EtsyClient() if config.etsy_enabled and config.etsy_urls else None
+        )
+        self.scanner = Scanner(
+            config, self.client, self.store, self.scorer, etsy=self.etsy
+        )
 
         if config.seed_defaults:
             self._seed_default_guidance()
@@ -154,4 +160,6 @@ class Service:
             "interval_seconds": self.config.interval_seconds,
             "use_ai": self.config.use_ai,
             "queries": self.config.queries,
+            "etsy_enabled": self.etsy is not None,
+            "etsy_urls": self.config.etsy_urls if self.etsy is not None else [],
         }

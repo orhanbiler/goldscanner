@@ -7,19 +7,18 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Item:
-    """A single shopgoodwill listing, normalized from the search API."""
+    """A single listing, normalized from any source (shopgoodwill, etsy, ...)."""
 
     item_id: str
     title: str
+    source: str = "shopgoodwill"
     current_price: str | None = None
     end_time: str | None = None
     num_bids: int | None = None
     # Fully-qualified image URLs (thumbnail first, then any detail photos).
     image_urls: list[str] = field(default_factory=list)
-
-    @property
-    def url(self) -> str:
-        return f"https://shopgoodwill.com/item/{self.item_id}"
+    # Link to the listing page. Set by the source client.
+    url: str = ""
 
 
 @dataclass

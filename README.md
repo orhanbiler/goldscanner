@@ -10,7 +10,7 @@ where you can open the item links, favorite the ones you want to bid on, and
 ## How it works
 
 ```
-search shopgoodwill ─▶ skip items already seen ─▶ title keyword pre-filter
+search shopgoodwill + etsy ─▶ skip items already seen ─▶ title keyword pre-filter
         │
         ▼
   Claude vision scores each new item's photos
@@ -27,6 +27,11 @@ search shopgoodwill ─▶ skip items already seen ─▶ title keyword pre-filt
   while a web server serves the UI. Deploy once on Railway and you get a public URL.
 - **Search is public** — no shopgoodwill login or password is needed. The tool
   only reads listings; it never bids or touches your account.
+- **Etsy too** — it also scans Etsy search/market pages you configure
+  (`GOLDSCANNER_ETSY_URLS`), parsed from the page's embedded JSON-LD product
+  data. Best-effort by design: Etsy uses bot protection, so if a fetch is
+  blocked the scan logs a warning and continues with shopgoodwill. Cards show
+  a source badge so you can tell listings apart.
 - **A SQLite database** tracks every item it has seen, so each listing is only
   examined once. New listings are anything not yet in that database. Your favorites
   and hidden items live there too.

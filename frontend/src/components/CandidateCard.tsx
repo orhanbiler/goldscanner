@@ -23,7 +23,12 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
 
   return (
     <Card className="flex flex-col overflow-hidden">
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className="block">
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative block"
+      >
         {item.image_url ? (
           <img
             src={item.image_url}
@@ -36,6 +41,9 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
             no image
           </div>
         )}
+        <span className="absolute left-2 top-2 rounded-full bg-background/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground shadow">
+          {item.source === "etsy" ? "Etsy" : "ShopGoodwill"}
+        </span>
       </a>
 
       <div className="flex flex-1 flex-col gap-3 p-4">

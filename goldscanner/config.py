@@ -64,6 +64,10 @@ class Config:
     pages_per_query: int = 2
     run_once: bool = False
 
+    # Etsy source (scrapes JSON-LD from search/market pages; best-effort).
+    etsy_enabled: bool = True
+    etsy_urls: list[str] = field(default_factory=list)
+
     # Seed the built-in guidance (antique enamel bangles) into the DB on first run.
     seed_defaults: bool = True
 
@@ -104,6 +108,14 @@ class Config:
             interval_seconds=_int("GOLDSCANNER_INTERVAL_SECONDS", 900),
             pages_per_query=_int("GOLDSCANNER_PAGES_PER_QUERY", 2),
             run_once=_bool("GOLDSCANNER_RUN_ONCE", False),
+            etsy_enabled=_bool("GOLDSCANNER_ETSY_ENABLED", True),
+            etsy_urls=_list(
+                "GOLDSCANNER_ETSY_URLS",
+                [
+                    "https://www.etsy.com/market/antique_victorian_gold_bangle",
+                    "https://www.etsy.com/market/antique_victorian_gold_bangle?ref=pagination&page=2",
+                ],
+            ),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
             db_path=os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db"),
             email_enabled=_bool("GOLDSCANNER_EMAIL_ENABLED", True),

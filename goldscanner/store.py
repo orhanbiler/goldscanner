@@ -47,6 +47,7 @@ class SeenStore:
                 """
                 CREATE TABLE IF NOT EXISTS items (
                     item_id     TEXT PRIMARY KEY,
+                    source      TEXT NOT NULL DEFAULT 'shopgoodwill',
                     title       TEXT,
                     price       TEXT,
                     end_time    TEXT,
@@ -81,6 +82,13 @@ class SeenStore:
                 );
                 """
             )
+            # Migration for databases created before the multi-source change.
+            cols = [r[1] for r in self._conn.execute("PRAGMA table_info(items)")]
+            if "source" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE items ADD COLUMN source TEXT NOT NULL "
+                    "DEFAULT 'shopgoodwill'"
+                )
             self._conn.commit()
 
     # -- dedupe / items ------------------------------------------------------
@@ -98,12 +106,13 @@ class SeenStore:
             self._conn.execute(
                 """
                 INSERT OR IGNORE INTO items
-                    (item_id, title, price, end_time, num_bids, image_url, url,
+                    (item_id, source, title, price, end_time, num_bids, image_url, url,
                      matched, confidence, reasoning, status, first_seen, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(item.item_id),
+                    item.source,
                     item.title,
                     item.current_price,
                     item.end_time,

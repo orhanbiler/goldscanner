@@ -117,12 +117,14 @@ class ShopGoodwillClient:
         return Item(
             item_id=item_id,
             title=str(raw.get("title") or "").strip(),
+            source="shopgoodwill",
             current_price=(
                 str(raw.get("currentPrice")) if raw.get("currentPrice") is not None else None
             ),
             end_time=raw.get("endTime"),
             num_bids=num_bids,
             image_urls=[image] if image else [],
+            url=f"https://shopgoodwill.com/item/{item_id}",
         )
 
     @staticmethod
