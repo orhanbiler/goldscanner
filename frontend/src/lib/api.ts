@@ -25,6 +25,7 @@ export interface Example {
 export interface Counts {
   seen: number;
   matched: number;
+  rejected: number;
   new: number;
   favorite: number;
   dismissed: number;
@@ -62,6 +63,12 @@ export const api = {
     ),
   setStatus: (id: string, status: string) =>
     fetch(`/api/items/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).then(j<{ ok: boolean; counts: Counts }>),
+  promote: (id: string, status: string = "new") =>
+    fetch(`/api/items/${encodeURIComponent(id)}/promote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),

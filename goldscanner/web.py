@@ -83,6 +83,11 @@ def create_app(service: Service) -> FastAPI:
 
     @app.get("/api/items")
     def api_items(status: str = "new") -> dict:
+        if status == "rejected":
+            return {
+                "items": service.store.list_rejected(),
+                "counts": service.store.counts(),
+            }
         if status not in VALID_STATUSES and status != "all":
             raise HTTPException(400, "invalid status filter")
         items = service.store.list_matches(None if status == "all" else status)
@@ -106,6 +111,23 @@ def create_app(service: Service) -> FastAPI:
                 service.store.add_example(
                     item["image_url"], LABEL_NEGATIVE, item_id, item.get("title")
                 )
+        return {"ok": True, "counts": service.store.counts()}
+
+    @app.post("/api/items/{item_id}/promote")
+    def api_promote(item_id: str, body: StatusUpdate | None = None) -> dict:
+        """User override: move a rejected item into the candidates."""
+        status = body.status if body else "new"
+        if status not in VALID_STATUSES:
+            raise HTTPException(400, "invalid status")
+        ok = service.store.promote(item_id, status)
+        if not ok:
+            raise HTTPException(404, "item not found")
+        # Promoting is a strong "the AI was wrong" signal — seed a positive label.
+        item = service.store.get_item(item_id)
+        if item and item.get("image_url"):
+            service.store.add_example(
+                item["image_url"], LABEL_POSITIVE, item_id, item.get("title")
+            )
         return {"ok": True, "counts": service.store.counts()}
 
     @app.post("/api/scan")

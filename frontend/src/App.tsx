@@ -62,6 +62,7 @@ export default function App() {
   const counts = status?.counts ?? {
     seen: 0,
     matched: 0,
+    rejected: 0,
     new: 0,
     favorite: 0,
     dismissed: 0,

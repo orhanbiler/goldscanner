@@ -1,4 +1,4 @@
-import { ExternalLink, EyeOff, Star } from "lucide-react";
+import { ArrowUpCircle, ExternalLink, EyeOff, Star } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,13 @@ import { cn } from "@/lib/utils";
 interface Props {
   item: Item;
   onSetStatus: (id: string, status: string) => void;
+  /** When true, the item was rejected by the AI — show promote actions instead. */
+  rejected?: boolean;
+  onPromote?: (id: string, status: string) => void;
 }
 
-export function CandidateCard({ item, onSetStatus }: Props) {
+export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props) {
+  const scored = item.confidence != null;
   const conf = Math.round((item.confidence ?? 0) * 100);
   const fav = item.status === "favorite";
   const confTone =
@@ -60,14 +64,22 @@ export function CandidateCard({ item, onSetStatus }: Props) {
           {item.end_time && <span>Ends {item.end_time}</span>}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="w-9 text-xs font-semibold tabular-nums text-muted-foreground">
-            {conf}%
-          </span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-            <div className={cn("h-full", confTone)} style={{ width: `${conf}%` }} />
+        {scored ? (
+          <div className="flex items-center gap-2">
+            <span className="w-9 text-xs font-semibold tabular-nums text-muted-foreground">
+              {conf}%
+            </span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className={cn("h-full", confTone)} style={{ width: `${conf}%` }} />
+            </div>
           </div>
-        </div>
+        ) : (
+          rejected && (
+            <Badge variant="secondary" className="self-start">
+              Skipped by title filter (not scored)
+            </Badge>
+          )
+        )}
 
         {item.reasoning && (
           <p className="rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
@@ -75,36 +87,64 @@ export function CandidateCard({ item, onSetStatus }: Props) {
           </p>
         )}
 
-        <div className="mt-auto flex items-center gap-2 pt-1">
-          <Button asChild size="sm" className="flex-1">
-            <a href={item.url} target="_blank" rel="noopener noreferrer">
-              View <ExternalLink />
-            </a>
-          </Button>
-          <Button
-            size="sm"
-            variant={fav ? "success" : "outline"}
-            onClick={() => onSetStatus(item.item_id, fav ? "new" : "favorite")}
-            title={fav ? "Saved — tap to unsave" : "Favorite"}
-          >
-            <Star className={fav ? "fill-current" : ""} />
-          </Button>
-          {!fav && (
+        {rejected ? (
+          <div className="mt-auto flex items-center gap-2 pt-1">
+            <Button asChild size="sm" variant="outline" className="flex-1">
+              <a href={item.url} target="_blank" rel="noopener noreferrer">
+                View <ExternalLink />
+              </a>
+            </Button>
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => onSetStatus(item.item_id, "dismissed")}
-              title="Hide (and teach the AI this is not a match)"
+              className="flex-1"
+              onClick={() => onPromote?.(item.item_id, "new")}
+              title="The AI was wrong — move this to Candidates"
             >
-              <EyeOff />
+              <ArrowUpCircle /> Candidate
             </Button>
-          )}
-        </div>
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => onPromote?.(item.item_id, "favorite")}
+              title="Move to Candidates and favorite it"
+            >
+              <Star />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-auto flex items-center gap-2 pt-1">
+              <Button asChild size="sm" className="flex-1">
+                <a href={item.url} target="_blank" rel="noopener noreferrer">
+                  View <ExternalLink />
+                </a>
+              </Button>
+              <Button
+                size="sm"
+                variant={fav ? "success" : "outline"}
+                onClick={() => onSetStatus(item.item_id, fav ? "new" : "favorite")}
+                title={fav ? "Saved — tap to unsave" : "Favorite"}
+              >
+                <Star className={fav ? "fill-current" : ""} />
+              </Button>
+              {!fav && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onSetStatus(item.item_id, "dismissed")}
+                  title="Hide (and teach the AI this is not a match)"
+                >
+                  <EyeOff />
+                </Button>
+              )}
+            </div>
 
-        {fav && (
-          <Badge variant="success" className="self-start">
-            ★ Favorited
-          </Badge>
+            {fav && (
+              <Badge variant="success" className="self-start">
+                ★ Favorited
+              </Badge>
+            )}
+          </>
         )}
       </div>
     </Card>

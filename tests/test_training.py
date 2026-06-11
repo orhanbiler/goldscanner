@@ -84,6 +84,45 @@ def test_guidance_roundtrip():
         os.remove(path)
 
 
+def test_rejected_listing_and_promote():
+    service, client, path = make_client()
+    try:
+        # One scored reject, one title-filtered (unscored) item
+        service.store.record(
+            Item(item_id="r1", title="Gold bangle no enamel",
+                 image_urls=["https://example.com/r1.jpg"]),
+            matched=False, confidence=0.3, reasoning="no enamel visible",
+        )
+        service.store.record(
+            Item(item_id="r2", title="Gold ring",
+                 image_urls=["https://example.com/r2.jpg"]),
+            matched=False, confidence=None, reasoning="",
+        )
+
+        body = client.get("/api/items?status=rejected").json()
+        ids = [i["item_id"] for i in body["items"]]
+        assert ids == ["r1", "r2"]  # scored rejects first
+        assert body["counts"]["rejected"] == 2
+
+        # Promote the scored reject straight to favorites
+        r = client.post("/api/items/r1/promote", json={"status": "favorite"})
+        assert r.status_code == 200
+        assert r.json()["counts"]["favorite"] == 1
+        assert r.json()["counts"]["rejected"] == 1
+
+        # It now shows under favorites, and seeded a positive training label
+        favs = client.get("/api/items?status=favorite").json()["items"]
+        assert [i["item_id"] for i in favs] == ["r1"]
+        assert client.get("/api/examples").json()["counts"]["positive"] == 1
+
+        # Unknown item 404s
+        assert client.post("/api/items/zzz/promote",
+                           json={"status": "new"}).status_code == 404
+    finally:
+        service.store.close()
+        os.remove(path)
+
+
 def test_labeling_queue_excludes_labeled():
     service, client, path = make_client()
     try:

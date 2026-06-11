@@ -8,8 +8,9 @@ import { api, type Counts, type Item } from "@/lib/api";
 
 const FILTERS = [
   { key: "new", label: "New" },
-  { key: "favorite", label: "★ Favorites" },
+  { key: "favorite", label: "★ Favs" },
   { key: "all", label: "All" },
+  { key: "rejected", label: "Rejected" },
 ] as const;
 
 interface Props {
@@ -55,14 +56,35 @@ export function CandidatesView({ counts, onChanged }: Props) {
     }
   }
 
+  async function promote(id: string, status: string) {
+    try {
+      await api.promote(id, status);
+      toast.success(
+        status === "favorite"
+          ? "Moved to candidates & favorited ★ (taught the AI)"
+          : "Moved to candidates (taught the AI)",
+      );
+      load(filter);
+      onChanged();
+    } catch {
+      toast.error("Something went wrong");
+    }
+  }
+
   const badge = (key: string) =>
-    key === "new" ? counts.new : key === "favorite" ? counts.favorite : counts.matched;
+    key === "new"
+      ? counts.new
+      : key === "favorite"
+        ? counts.favorite
+        : key === "rejected"
+          ? counts.rejected
+          : counts.matched;
 
   return (
     <Tabs value={filter} onValueChange={setFilter}>
-      <TabsList className="grid w-full grid-cols-3">
+      <TabsList className="grid h-auto w-full grid-cols-4">
         {FILTERS.map((f) => (
-          <TabsTrigger key={f.key} value={f.key}>
+          <TabsTrigger key={f.key} value={f.key} className="px-2">
             {f.label}
             <span className="ml-1 rounded-full bg-background/60 px-1.5 text-xs tabular-nums">
               {badge(f.key)}
@@ -85,11 +107,26 @@ export function CandidatesView({ counts, onChanged }: Props) {
           ) : items.length === 0 ? (
             <EmptyState filter={filter} />
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((it) => (
-                <CandidateCard key={it.item_id} item={it} onSetStatus={setStatus} />
-              ))}
-            </div>
+            <>
+              {filter === "rejected" && (
+                <p className="mb-3 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Everything the scanner examined but didn't surface — with the
+                  AI's reasoning. If it got one wrong, promote it: that also
+                  teaches the AI it's a match.
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((it) => (
+                  <CandidateCard
+                    key={it.item_id}
+                    item={it}
+                    onSetStatus={setStatus}
+                    rejected={filter === "rejected"}
+                    onPromote={promote}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </TabsContent>
       ))}
@@ -104,7 +141,9 @@ function EmptyState({ filter }: { filter: string }) {
       <p className="max-w-sm text-sm">
         {filter === "favorite"
           ? "No favorites yet. Tap ★ on a candidate to save it here."
-          : "Nothing here yet. The scanner runs every few minutes — check back soon, or hit “Scan now”."}
+          : filter === "rejected"
+            ? "Nothing rejected yet — everything scanned so far either matched or hasn't been scanned."
+            : "Nothing here yet. The scanner runs every few minutes — check back soon, or hit “Scan now”."}
       </p>
     </div>
   );

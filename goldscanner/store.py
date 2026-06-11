@@ -138,6 +138,36 @@ class SeenStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def list_rejected(self, limit: int = 150) -> list[dict]:
+        """Scanned items the AI rejected (or the title filter skipped).
+
+        Scored rejects come first, highest confidence first, so near-misses are
+        easiest to review; unscored (title-filtered) items follow.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT * FROM items
+                WHERE matched = 0
+                ORDER BY (confidence IS NULL) ASC, confidence DESC, first_seen DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def promote(self, item_id: str, status: str = STATUS_NEW) -> bool:
+        """Move a rejected item into the matched candidates (user override)."""
+        if status not in VALID_STATUSES:
+            return False
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE items SET matched = 1, status = ?, updated = ? WHERE item_id = ?",
+                (status, time.time(), str(item_id)),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def set_status(self, item_id: str, status: str) -> bool:
         if status not in VALID_STATUSES:
             return False
@@ -257,6 +287,7 @@ class SeenStore:
         return {
             "seen": int(total_seen),
             "matched": int(matched_total),
+            "rejected": int(total_seen) - int(matched_total),
             "new": int(by_status.get(STATUS_NEW, 0)),
             "favorite": int(by_status.get(STATUS_FAVORITE, 0)),
             "dismissed": int(by_status.get(STATUS_DISMISSED, 0)),
