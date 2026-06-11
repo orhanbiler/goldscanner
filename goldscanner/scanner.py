@@ -20,13 +20,14 @@ class Scanner:
         client: ShopGoodwillClient,
         store: SeenStore,
         scorer: VisionScorer | None,
-        etsy=None,
+        extra_sources: list | None = None,
     ):
         self.config = config
         self.client = client
         self.store = store
         self.scorer = scorer
-        self.etsy = etsy
+        # Each extra source exposes fetch_items() -> list[Item] (etsy, ebay, ...).
+        self.extra_sources = extra_sources or []
 
     def scan_once(self) -> list[tuple[Item, Score]]:
         """Run a full scan and return the list of newly matched (item, score)."""
@@ -90,10 +91,12 @@ class Scanner:
                     break
                 yield from fresh(items)
 
-        # etsy market/search pages (best-effort)
-        if self.etsy is not None:
-            for url in self.config.etsy_urls:
-                yield from fresh(self.etsy.fetch_listings(url))
+        # other sources (etsy, ebay) — each best-effort
+        for source in self.extra_sources:
+            try:
+                yield from fresh(source.fetch_items())
+            except Exception as exc:  # noqa: BLE001
+                log.warning("source %s failed: %s", type(source).__name__, exc)
 
     def _passes_prefilter(self, item: Item) -> bool:
         keywords = self.config.title_keywords

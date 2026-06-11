@@ -49,8 +49,7 @@ export interface Status {
   interval_seconds: number;
   use_ai: boolean;
   queries: string[];
-  etsy_enabled: boolean;
-  etsy_urls: string[];
+  sources: string[];
 }
 
 async function j<T>(res: Response): Promise<T> {

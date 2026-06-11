@@ -42,7 +42,11 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
           </div>
         )}
         <span className="absolute left-2 top-2 rounded-full bg-background/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground shadow">
-          {item.source === "etsy" ? "Etsy" : "ShopGoodwill"}
+          {item.source === "etsy"
+            ? "Etsy"
+            : item.source === "ebay"
+              ? "eBay"
+              : "ShopGoodwill"}
         </span>
       </a>
 

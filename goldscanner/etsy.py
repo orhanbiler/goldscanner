@@ -1,14 +1,14 @@
 """Etsy listings source.
 
-Etsy has no public search API, but its search/market pages embed structured
-JSON-LD (`<script type="application/ld+json">`) describing the products on the
-page — name, url, image, and offer price. We fetch the page HTML and parse that,
-no headless browser required.
+Two modes:
+  * **API mode** (preferred) — when an `ETSY_API_KEY` is provided, we call Etsy's
+    official Open API v3 (`/v3/application/listings/active`). Reliable JSON, not
+    bot-blocked. Get a key at https://www.etsy.com/developers (create an app).
+  * **Scrape fallback** — without a key, we fetch search/market page HTML and
+    parse the embedded JSON-LD. Etsy uses bot protection (DataDome), so this is
+    frequently blocked from datacenter IPs (e.g. Railway) and may return nothing.
 
-Caveats (by design, this source degrades gracefully):
-  * Etsy uses bot protection (DataDome). If a fetch is blocked or the page
-    shape changes, we log a warning and return [] instead of failing the scan.
-  * Keep the URL list short and the scan interval modest to stay polite.
+Both modes degrade gracefully: any failure logs a warning and returns [].
 """
 
 from __future__ import annotations
@@ -34,9 +34,22 @@ _LDJSON_RE = re.compile(
 )
 _LISTING_ID_RE = re.compile(r"/listing/(\d+)")
 
+ETSY_API_URL = "https://openapi.etsy.com/v3/application/listings/active"
+
 
 class EtsyClient:
-    def __init__(self, timeout: int = 30):
+    def __init__(
+        self,
+        urls: list[str] | None = None,
+        api_key: str = "",
+        queries: list[str] | None = None,
+        limit: int = 50,
+        timeout: int = 30,
+    ):
+        self.urls = urls or []
+        self.api_key = api_key
+        self.queries = queries or []
+        self.limit = max(1, min(limit, 100))
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(
@@ -46,6 +59,84 @@ class EtsyClient:
                 "Accept-Language": "en-US,en;q=0.9",
             }
         )
+
+    def fetch_items(self) -> list[Item]:
+        """Uniform entry point used by the scanner."""
+        if self.api_key:
+            return self._fetch_via_api()
+        items: list[Item] = []
+        seen: set[str] = set()
+        for url in self.urls:
+            for item in self.fetch_listings(url):
+                if item.item_id not in seen:
+                    seen.add(item.item_id)
+                    items.append(item)
+        return items
+
+    # -- API mode ------------------------------------------------------------
+
+    def _fetch_via_api(self) -> list[Item]:
+        items: list[Item] = []
+        seen: set[str] = set()
+        for query in self.queries:
+            try:
+                resp = self.session.get(
+                    ETSY_API_URL,
+                    headers={"x-api-key": self.api_key},
+                    params={
+                        "keywords": query,
+                        "limit": self.limit,
+                        "includes": "Images",
+                    },
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("etsy api search failed (q=%r): %s", query, exc)
+                continue
+            for raw in data.get("results") or []:
+                item = self._normalize_api(raw)
+                if item and item.item_id not in seen:
+                    seen.add(item.item_id)
+                    items.append(item)
+        return items
+
+    @staticmethod
+    def _normalize_api(raw: dict) -> Item | None:
+        listing_id = raw.get("listing_id")
+        title = str(raw.get("title") or "").strip()
+        if not listing_id or not title:
+            return None
+        url = str(raw.get("url") or f"https://www.etsy.com/listing/{listing_id}")
+
+        price = raw.get("price") or {}
+        amount, divisor = price.get("amount"), price.get("divisor")
+        price_str = None
+        if isinstance(amount, (int, float)) and divisor:
+            price_str = f"{amount / divisor:.2f}"
+
+        image_url = None
+        images = raw.get("images") or []
+        if images and isinstance(images[0], dict):
+            image_url = (
+                images[0].get("url_fullxfull")
+                or images[0].get("url_570xN")
+                or images[0].get("url_170x135")
+            )
+
+        return Item(
+            item_id=f"etsy-{listing_id}",
+            title=title,
+            source="etsy",
+            current_price=price_str,
+            end_time=None,
+            num_bids=None,
+            image_urls=[image_url] if image_url else [],
+            url=url.split("?")[0],
+        )
+
+    # -- scrape fallback -----------------------------------------------------
 
     def fetch_listings(self, url: str) -> list[Item]:
         """Fetch one Etsy search/market page and return its listings.

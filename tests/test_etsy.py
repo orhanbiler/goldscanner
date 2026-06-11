@@ -75,13 +75,13 @@ class FakeSG:
         return []
 
 
-class FakeEtsy:
+class FakeSource:
     def __init__(self, items):
         self.items = items
-        self.calls = []
+        self.calls = 0
 
-    def fetch_listings(self, url):
-        self.calls.append(url)
+    def fetch_items(self):
+        self.calls += 1
         return self.items
 
 
@@ -90,7 +90,7 @@ class FakeScorer:
         return Score(True, 0.9, "match")
 
 
-def test_scanner_includes_etsy_items():
+def test_scanner_includes_extra_source_items():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     store = SeenStore(path)
@@ -102,26 +102,46 @@ def test_scanner_includes_etsy_items():
             image_urls=["https://i.etsystatic.com/x.jpg"],
             url="https://www.etsy.com/listing/1/x",
         )
+        ebay_item = Item(
+            item_id="ebay-9",
+            title="Antique gold filled bangle",
+            source="ebay",
+            image_urls=["https://i.ebayimg.com/y.jpg"],
+            url="https://www.ebay.com/itm/9",
+        )
         cfg = Config(
             queries=["bangle"],
             title_keywords=["bangle"],
             use_ai=True,
             email_enabled=False,
-            etsy_enabled=True,
-            etsy_urls=["https://www.etsy.com/market/test"],
             pages_per_query=1,
         )
-        etsy = FakeEtsy([etsy_item])
-        scanner = Scanner(cfg, FakeSG(), store, FakeScorer(), etsy=etsy)
+        src = FakeSource([etsy_item, ebay_item])
+        scanner = Scanner(cfg, FakeSG(), store, FakeScorer(), extra_sources=[src])
 
         matches = scanner.scan_once()
-        assert [m[0].item_id for m in matches] == ["etsy-1"]
-        assert etsy.calls == ["https://www.etsy.com/market/test"]
+        assert sorted(m[0].item_id for m in matches) == ["ebay-9", "etsy-1"]
+        assert src.calls == 1
+        assert store.get_item("etsy-1")["source"] == "etsy"
+        assert store.get_item("ebay-9")["source"] == "ebay"
+        assert scanner.scan_once() == []  # deduped
+    finally:
+        store.close()
+        os.remove(path)
 
-        # stored with its source, and deduped on the next scan
-        row = store.get_item("etsy-1")
-        assert row["source"] == "etsy"
-        assert scanner.scan_once() == []
+
+def test_failing_source_does_not_break_scan():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    store = SeenStore(path)
+    try:
+        class Boom:
+            def fetch_items(self):
+                raise RuntimeError("blocked")
+
+        cfg = Config(queries=[], title_keywords=[], use_ai=False, email_enabled=False)
+        scanner = Scanner(cfg, FakeSG(), store, None, extra_sources=[Boom()])
+        assert scanner.scan_once() == []  # no crash
     finally:
         store.close()
         os.remove(path)

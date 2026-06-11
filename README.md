@@ -10,7 +10,7 @@ where you can open the item links, favorite the ones you want to bid on, and
 ## How it works
 
 ```
-search shopgoodwill + etsy ─▶ skip items already seen ─▶ title keyword pre-filter
+search shopgoodwill + etsy + ebay ─▶ skip items already seen ─▶ title keyword pre-filter
         │
         ▼
   Claude vision scores each new item's photos
@@ -27,11 +27,16 @@ search shopgoodwill + etsy ─▶ skip items already seen ─▶ title keyword p
   while a web server serves the UI. Deploy once on Railway and you get a public URL.
 - **Search is public** — no shopgoodwill login or password is needed. The tool
   only reads listings; it never bids or touches your account.
-- **Etsy too** — it also scans Etsy search/market pages you configure
-  (`GOLDSCANNER_ETSY_URLS`), parsed from the page's embedded JSON-LD product
-  data. Best-effort by design: Etsy uses bot protection, so if a fetch is
-  blocked the scan logs a warning and continues with shopgoodwill. Cards show
-  a source badge so you can tell listings apart.
+- **Three sources** — shopgoodwill, **Etsy**, and **eBay**. Cards show a source
+  badge so you can tell listings apart. Active sources appear in the header.
+  - **eBay** uses the official **Browse API** — set `EBAY_CLIENT_ID` /
+    `EBAY_CLIENT_SECRET` (free at https://developer.ebay.com → create an app →
+    use the **Production** App ID + Cert ID). Reliable JSON, not bot-blocked.
+  - **Etsy** uses the official **API** when `ETSY_API_KEY` is set (free at
+    https://www.etsy.com/developers). Without a key it falls back to scraping
+    search pages, which Etsy's bot protection usually blocks from cloud IPs —
+    so **set the key** if you want Etsy results. Either way it degrades
+    gracefully (logs a warning, never crashes the scan).
 - **A SQLite database** tracks every item it has seen, so each listing is only
   examined once. New listings are anything not yet in that database. Your favorites
   and hidden items live there too.

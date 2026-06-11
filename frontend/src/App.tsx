@@ -90,7 +90,8 @@ export default function App() {
               {counts.matched} candidate(s) · {counts.seen} listings checked · last
               scan {timeAgo(status.last_scan_at)} ·{" "}
               {status.use_ai ? "AI scoring on" : "keyword-only"} ·{" "}
-              {status.examples.total} training example(s)
+              {status.examples.total} training example(s) · sources:{" "}
+              {(status.sources ?? []).join(", ")}
             </>
           ) : (
             "Loading…"

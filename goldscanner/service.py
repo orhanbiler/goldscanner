@@ -11,6 +11,7 @@ import time
 
 from .client import ShopGoodwillClient
 from .config import Config
+from .ebay import EbayClient
 from .emailer import Emailer
 from .etsy import EtsyClient
 from .scanner import Scanner
@@ -80,11 +81,10 @@ class Service:
             if config.email_enabled
             else None
         )
-        self.etsy = (
-            EtsyClient() if config.etsy_enabled and config.etsy_urls else None
-        )
+        self.extra_sources = self._build_sources(config)
         self.scanner = Scanner(
-            config, self.client, self.store, self.scorer, etsy=self.etsy
+            config, self.client, self.store, self.scorer,
+            extra_sources=self.extra_sources,
         )
 
         if config.seed_defaults:
@@ -95,6 +95,41 @@ class Service:
         self.last_scan_at: float | None = None
         self.last_scan_matches: int = 0
         self.scanning: bool = False
+
+    @staticmethod
+    def _build_sources(config: Config) -> list:
+        sources: list = []
+        if config.etsy_enabled and (config.etsy_api_key or config.etsy_urls):
+            sources.append(
+                EtsyClient(
+                    urls=config.etsy_urls,
+                    api_key=config.etsy_api_key,
+                    queries=config.etsy_queries,
+                    limit=config.etsy_limit,
+                )
+            )
+            if not config.etsy_api_key:
+                log.warning(
+                    "Etsy is in scrape mode (no ETSY_API_KEY) — Etsy's bot "
+                    "protection often blocks cloud IPs, so results may be empty. "
+                    "Set ETSY_API_KEY for reliable results."
+                )
+        if config.ebay_enabled and config.ebay_client_id and config.ebay_client_secret:
+            sources.append(
+                EbayClient(
+                    client_id=config.ebay_client_id,
+                    client_secret=config.ebay_client_secret,
+                    queries=config.ebay_queries,
+                    limit=config.ebay_limit,
+                    marketplace=config.ebay_marketplace,
+                )
+            )
+        elif config.ebay_enabled:
+            log.warning(
+                "eBay is enabled but EBAY_CLIENT_ID/EBAY_CLIENT_SECRET are not "
+                "set — skipping eBay. Get free keys at https://developer.ebay.com"
+            )
+        return sources
 
     def _seed_default_guidance(self) -> None:
         """Populate the guidance once, on first run, without clobbering the user."""
@@ -160,6 +195,14 @@ class Service:
             "interval_seconds": self.config.interval_seconds,
             "use_ai": self.config.use_ai,
             "queries": self.config.queries,
-            "etsy_enabled": self.etsy is not None,
-            "etsy_urls": self.config.etsy_urls if self.etsy is not None else [],
+            "sources": self._source_names(),
         }
+
+    def _source_names(self) -> list[str]:
+        names = ["shopgoodwill"]
+        for source in self.extra_sources:
+            if isinstance(source, EtsyClient):
+                names.append("etsy" + ("" if source.api_key else " (scrape)"))
+            elif isinstance(source, EbayClient):
+                names.append("ebay")
+        return names

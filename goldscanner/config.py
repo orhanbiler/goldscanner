@@ -64,9 +64,20 @@ class Config:
     pages_per_query: int = 2
     run_once: bool = False
 
-    # Etsy source (scrapes JSON-LD from search/market pages; best-effort).
+    # Etsy source (official API when ETSY_API_KEY is set, else best-effort scrape).
     etsy_enabled: bool = True
     etsy_urls: list[str] = field(default_factory=list)
+    etsy_api_key: str = ""
+    etsy_queries: list[str] = field(default_factory=list)
+    etsy_limit: int = 50
+
+    # eBay source (official Browse API; needs client id/secret).
+    ebay_enabled: bool = True
+    ebay_client_id: str = ""
+    ebay_client_secret: str = ""
+    ebay_queries: list[str] = field(default_factory=list)
+    ebay_marketplace: str = "EBAY_US"
+    ebay_limit: int = 50
 
     # Seed the built-in guidance (antique enamel bangles) into the DB on first run.
     seed_defaults: bool = True
@@ -116,6 +127,21 @@ class Config:
                     "https://www.etsy.com/market/antique_victorian_gold_bangle?ref=pagination&page=2",
                 ],
             ),
+            etsy_api_key=os.environ.get("ETSY_API_KEY", ""),
+            etsy_queries=_list(
+                "GOLDSCANNER_ETSY_QUERIES",
+                ["antique victorian gold bangle", "victorian enamel gold bangle"],
+            ),
+            etsy_limit=_int("GOLDSCANNER_ETSY_LIMIT", 50),
+            ebay_enabled=_bool("GOLDSCANNER_EBAY_ENABLED", True),
+            ebay_client_id=os.environ.get("EBAY_CLIENT_ID", ""),
+            ebay_client_secret=os.environ.get("EBAY_CLIENT_SECRET", ""),
+            ebay_queries=_list(
+                "GOLDSCANNER_EBAY_QUERIES",
+                ["antique victorian gold bangle enamel", "victorian gold filled bangle"],
+            ),
+            ebay_marketplace=os.environ.get("EBAY_MARKETPLACE", "EBAY_US"),
+            ebay_limit=_int("GOLDSCANNER_EBAY_LIMIT", 50),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
             db_path=os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db"),
             email_enabled=_bool("GOLDSCANNER_EMAIL_ENABLED", True),
