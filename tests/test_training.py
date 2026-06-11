@@ -129,6 +129,27 @@ def test_rejected_listing_and_promote():
         os.remove(path)
 
 
+def test_labeling_queue_only_bangles_and_bracelets():
+    service, client, path = make_client()
+    try:
+        for item_id, title in [
+            ("c1", "14K gold rope chain necklace"),
+            ("r1", "Vintage gold ring lot"),
+            ("b1", "Victorian gold bangle"),
+            ("b2", "Antique gold-filled bracelet"),
+        ]:
+            service.store.record(
+                Item(item_id=item_id, title=title,
+                     image_urls=[f"https://x/{item_id}.jpg"]),
+                matched=False, confidence=0.4, reasoning="seen",
+            )
+        ids = {i["item_id"] for i in client.get("/api/queue").json()["items"]}
+        assert ids == {"b1", "b2"}  # chain + ring lot stay out of the queue
+    finally:
+        service.store.close()
+        os.remove(path)
+
+
 def test_labeling_queue_excludes_labeled():
     service, client, path = make_client()
     try:

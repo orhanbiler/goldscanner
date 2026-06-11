@@ -161,7 +161,10 @@ def create_app(service: Service) -> FastAPI:
     def api_queue(limit: int = 40) -> dict:
         return {
             "items": with_end_ts(
-                service.store.labeling_queue(limit=max(1, min(limit, 100)))
+                service.store.labeling_queue(
+                    limit=max(1, min(limit, 100)),
+                    title_keywords=service.config.queue_keywords,
+                )
             )
         }
 

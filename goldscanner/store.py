@@ -271,19 +271,29 @@ class SeenStore:
             self._conn.commit()
             return cur.rowcount > 0
 
-    def labeling_queue(self, limit: int = 40) -> list[dict]:
-        """Items with a photo that haven't been labeled yet (matched first)."""
+    def labeling_queue(
+        self, limit: int = 40, title_keywords: list[str] | None = None
+    ) -> list[dict]:
+        """Items with a photo that haven't been labeled yet (matched first).
+
+        `title_keywords` restricts the queue to relevant item types (e.g. only
+        bangles/bracelets) so training labels stay focused — chains, rings,
+        etc. from broad scan queries are kept out of the queue.
+        """
+        query = """
+            SELECT i.* FROM items i
+            LEFT JOIN examples e ON e.image_url = i.image_url
+            WHERE i.image_url IS NOT NULL AND e.id IS NULL
+        """
+        params: list = []
+        if title_keywords:
+            clauses = " OR ".join("lower(i.title) LIKE ?" for _ in title_keywords)
+            query += f" AND ({clauses})"
+            params.extend(f"%{kw.lower()}%" for kw in title_keywords)
+        query += " ORDER BY i.matched DESC, i.first_seen DESC LIMIT ?"
+        params.append(limit)
         with self._lock:
-            rows = self._conn.execute(
-                """
-                SELECT i.* FROM items i
-                LEFT JOIN examples e ON e.image_url = i.image_url
-                WHERE i.image_url IS NOT NULL AND e.id IS NULL
-                ORDER BY i.matched DESC, i.first_seen DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            rows = self._conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 
     # -- training examples ---------------------------------------------------

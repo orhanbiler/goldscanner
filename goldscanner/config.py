@@ -115,6 +115,11 @@ class Config:
     # Max previously-rejected items re-evaluated per "re-score" run.
     rescore_limit: int = 150
 
+    # Restrict the training/label queue to these item types (title match).
+    # Scanning still casts a wide net; this only keeps the labeling workflow
+    # focused. Empty = show everything scanned.
+    queue_keywords: list[str] = field(default_factory=lambda: ["bangle", "bracelet"])
+
     # Two-tier vision: matches/borderline calls from the cheap screening model
     # get a final verdict from this stronger vision model (high-res detail).
     # Empty string disables the second pass.
@@ -204,6 +209,9 @@ class Config:
             ebay_marketplace=os.environ.get("EBAY_MARKETPLACE", "EBAY_US"),
             ebay_limit=_int("GOLDSCANNER_EBAY_LIMIT", 50),
             rescore_limit=_int("GOLDSCANNER_RESCORE_LIMIT", 150),
+            queue_keywords=_list(
+                "GOLDSCANNER_QUEUE_KEYWORDS", ["bangle", "bracelet"]
+            ),
             verify_model=os.environ.get("GOLDSCANNER_VERIFY_MODEL", "claude-opus-4-8"),
             verify_threshold=_float("GOLDSCANNER_VERIFY_THRESHOLD", 0.35),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
