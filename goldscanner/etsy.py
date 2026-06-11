@@ -97,7 +97,10 @@ class EtsyClient:
                     params={"keywords": query, "limit": self.limit},
                     timeout=self.timeout,
                 )
-                resp.raise_for_status()
+                if resp.status_code != 200:
+                    self.last_error = self._api_error(resp)
+                    log.warning("etsy api search (q=%r): %s", query, self.last_error)
+                    continue
                 data = resp.json()
             except Exception as exc:  # noqa: BLE001
                 self.last_error = f"api search failed: {exc}"
@@ -123,7 +126,10 @@ class EtsyClient:
                     },
                     timeout=self.timeout,
                 )
-                resp.raise_for_status()
+                if resp.status_code != 200:
+                    self.last_error = self._api_error(resp)
+                    log.warning("etsy api batch: %s", self.last_error)
+                    continue
                 data = resp.json()
             except Exception as exc:  # noqa: BLE001
                 self.last_error = f"api batch fetch failed: {exc}"
@@ -135,6 +141,22 @@ class EtsyClient:
                     seen.add(item.item_id)
                     items.append(item)
         return items
+
+    @staticmethod
+    def _api_error(resp) -> str:
+        """Extract Etsy's own explanation from an error response body."""
+        detail = ""
+        try:
+            body = resp.json()
+            detail = str(body.get("error") or body.get("message") or body)
+        except Exception:  # noqa: BLE001
+            detail = (resp.text or "")[:200]
+        hint = ""
+        if resp.status_code == 403 and "approv" in detail.lower():
+            hint = " — your Etsy app is still pending approval"
+        elif resp.status_code == 401:
+            hint = " — check ETSY_API_KEY (use the Keystring)"
+        return f"api HTTP {resp.status_code}: {detail[:160]}{hint}"
 
     @staticmethod
     def _normalize_api(raw: dict) -> Item | None:
