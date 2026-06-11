@@ -86,7 +86,7 @@ class FakeSource:
 
 
 class FakeScorer:
-    def score(self, item):
+    def score(self, item, max_images=None):
         return Score(True, 0.9, "match")
 
 

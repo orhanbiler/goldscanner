@@ -121,16 +121,25 @@ class Scanner:
         title = item.title.lower()
         return any(kw.lower() in title for kw in keywords)
 
+    def _looks_like_lot(self, title: str) -> bool:
+        lowered = title.lower()
+        return any(kw.lower() in lowered for kw in self.config.lot_keywords)
+
     def _score(self, item: Item) -> Score:
         if not self.config.use_ai or self.scorer is None:
             return Score.keyword_only()
+        # Multi-item lots get a bigger photo budget so the model can hunt for a
+        # matching bangle buried among the pieces.
+        limit = (
+            self.config.lot_max_images
+            if self._looks_like_lot(item.title)
+            else self.config.max_images_per_item
+        )
         # Enrich with detail photos for a better visual judgment
         # (shopgoodwill only — its detail API takes the bare item id).
         if item.source == "shopgoodwill":
-            detail = self.client.fetch_detail_images(
-                item.item_id, limit=self.config.max_images_per_item
-            )
+            detail = self.client.fetch_detail_images(item.item_id, limit=limit)
             for url in detail:
                 if url not in item.image_urls:
                     item.image_urls.append(url)
-        return self.scorer.score(item)
+        return self.scorer.score(item, max_images=limit)

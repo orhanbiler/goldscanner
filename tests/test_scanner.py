@@ -34,7 +34,7 @@ class FakeScorer:
         self.verdicts = verdicts
         self.scored = []
 
-    def score(self, item):
+    def score(self, item, max_images=None):
         self.scored.append(item.item_id)
         return self.verdicts.get(item.item_id, Score(False, 0.0, "no verdict"))
 
@@ -113,6 +113,44 @@ def test_low_confidence_is_not_a_match():
         scanner = Scanner(base_config(min_confidence=0.6), client, store, scorer)
 
         assert scanner.scan_once() == []
+    finally:
+        store.close()
+        os.remove(path)
+
+
+def test_lot_listings_get_bigger_photo_budget():
+    store, path = make_store()
+    try:
+        items = [
+            Item(item_id="L1", title="Gold Filled Victorian Jewelry Lot"),
+            Item(item_id="S1", title="Gold filled bangle"),
+        ]
+        client = FakeClient({"bangle": [items]})
+
+        class RecordingScorer:
+            def __init__(self):
+                self.calls = {}
+
+            def score(self, item, max_images=None):
+                self.calls[item.item_id] = max_images
+                return Score(True, 0.9, "[Lot] bangle in photo 2" if "Lot" in item.title else "single match")
+
+        scorer = RecordingScorer()
+        cfg = base_config(
+            title_keywords=["bangle", "lot", "jewelry"],
+            lot_keywords=["lot", "jewelry"],
+            max_images_per_item=3,
+            lot_max_images=6,
+        )
+        scanner = Scanner(cfg, client, store, scorer)
+        matches = scanner.scan_once()
+
+        # Lot got the bigger budget; single item the normal one.
+        assert scorer.calls["L1"] == 6
+        assert scorer.calls["S1"] == 3
+        # Detail-image fetch used the same per-item limit.
+        assert set(client.detail_calls) == {"L1", "S1"}
+        assert len(matches) == 2
     finally:
         store.close()
         os.remove(path)

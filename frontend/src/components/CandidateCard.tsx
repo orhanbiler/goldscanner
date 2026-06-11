@@ -48,6 +48,11 @@ export function CandidateCard({ item, onSetStatus, rejected, onPromote }: Props)
               ? "eBay"
               : "ShopGoodwill"}
         </span>
+        {item.reasoning?.startsWith("[Lot]") && (
+          <span className="absolute right-2 top-2 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground shadow">
+            📦 Lot
+          </span>
+        )}
       </a>
 
       <div className="flex flex-1 flex-col gap-3 p-4">

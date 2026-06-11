@@ -30,9 +30,17 @@ _SCHEMA = {
             "type": "boolean",
             "description": "True if the piece appears to have enamel decoration.",
         },
+        "is_lot": {
+            "type": "boolean",
+            "description": "True if this listing is a multi-item jewelry lot rather than a single piece.",
+        },
         "is_match": {
             "type": "boolean",
-            "description": "True only if it matches the target overall.",
+            "description": (
+                "True if the listing matches the target — for a single piece, the piece "
+                "itself; for a lot, true if AT LEAST ONE item visible in the photos "
+                "appears to be a matching bangle."
+            ),
         },
         "confidence": {
             "type": "number",
@@ -46,6 +54,7 @@ _SCHEMA = {
     "required": [
         "is_gold_filled_bangle",
         "has_enamel",
+        "is_lot",
         "is_match",
         "confidence",
         "reasoning",
@@ -78,8 +87,9 @@ class VisionScorer:
         self._ex_blocks: list[dict] = []
         self._img_cache: dict[str, dict | None] = {}
 
-    def score(self, item: Item) -> Score:
-        item_blocks = self._download_blocks(item.image_urls[: self.max_images])
+    def score(self, item: Item, max_images: int | None = None) -> Score:
+        limit = max_images or self.max_images
+        item_blocks = self._download_blocks(item.image_urls[:limit])
         if not item_blocks:
             return Score(False, 0.0, "No usable images to score.")
 
@@ -106,10 +116,13 @@ class VisionScorer:
         except (json.JSONDecodeError, TypeError):
             return Score(False, 0.0, "Model returned unparseable output.")
 
+        reasoning = str(data.get("reasoning", ""))
+        if data.get("is_lot"):
+            reasoning = "[Lot] " + reasoning
         return Score(
             is_match=bool(data.get("is_match")),
             confidence=float(data.get("confidence", 0.0) or 0.0),
-            reasoning=str(data.get("reasoning", "")),
+            reasoning=reasoning,
         )
 
     # -- prompt building -----------------------------------------------------
@@ -123,6 +136,16 @@ class VisionScorer:
         if guidance:
             parts.append(f"\nADDITIONAL GUIDANCE FROM THE USER:\n{guidance}")
         parts.append(f'\nThis listing\'s title: "{item.title}"')
+        parts.append(
+            "\nIMPORTANT — MULTI-ITEM LOTS: some listings are lots of many jewelry "
+            "pieces photographed together. If this is a lot, examine EVERY photo "
+            "carefully, including the background and edges, hunting for any bangle "
+            "that matches the target. A lot IS a match if at least one matching "
+            "bangle appears to be present — set is_lot=true, is_match=true, and say "
+            "in your reasoning which photo it's in and where (e.g. 'wide gold bangle "
+            "with black scrollwork, photo 2, upper left'). Confidence = how sure you "
+            "are that a matching bangle is in the lot."
+        )
         parts.append(
             "\nUse the labeled reference photos above (if any) as your guide for what "
             "does and does not count as a match. Be honest about uncertainty — you "

@@ -51,6 +51,14 @@ class Config:
     min_confidence: float = 0.6
     use_ai: bool = True
     max_images_per_item: int = 3
+    # Multi-item lots get more photos so the model can hunt for a bangle inside.
+    lot_max_images: int = 6
+    # Title tokens that suggest a listing is a multi-item lot.
+    lot_keywords: list[str] = field(
+        default_factory=lambda: [
+            "lot", "jewelry", "jewellery", "estate", "collection", "bundle",
+        ]
+    )
     # Max labeled reference photos of each kind (positive/negative) fed to the
     # model per scored item.
     max_examples_each: int = 4
@@ -99,7 +107,16 @@ class Config:
         return cls(
             queries=_list(
                 "GOLDSCANNER_QUERIES",
-                ["gold filled bangle", "gold filled enamel bracelet"],
+                [
+                    "gold bangle",
+                    "gold bracelet",
+                    "gold filled bangle",
+                    "gold filled bracelet",
+                    "gold filled antique jewelry lot",
+                    "gold filled victorian jewelry lot",
+                    "gold lot",
+                    "gold filled lot",
+                ],
             ),
             target_description=os.environ.get(
                 "GOLDSCANNER_TARGET_DESCRIPTION",
@@ -109,10 +126,18 @@ class Config:
                 "patterns over a finely engine-turned ground. Ornately hand-engraved "
                 "antique gold bangles in this style also count even without enamel.",
             ),
-            title_keywords=_list("GOLDSCANNER_TITLE_KEYWORDS", ["bangle", "bracelet"]),
+            title_keywords=_list(
+                "GOLDSCANNER_TITLE_KEYWORDS",
+                ["bangle", "bracelet", "lot", "jewelry", "jewellery", "estate"],
+            ),
             min_confidence=_float("GOLDSCANNER_MIN_CONFIDENCE", 0.6),
             use_ai=_bool("GOLDSCANNER_USE_AI", True),
             max_images_per_item=_int("GOLDSCANNER_MAX_IMAGES_PER_ITEM", 3),
+            lot_max_images=_int("GOLDSCANNER_MAX_IMAGES_LOT", 6),
+            lot_keywords=_list(
+                "GOLDSCANNER_LOT_KEYWORDS",
+                ["lot", "jewelry", "jewellery", "estate", "collection", "bundle"],
+            ),
             max_examples_each=_int("GOLDSCANNER_MAX_EXAMPLES", 4),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
             model=os.environ.get("GOLDSCANNER_MODEL", "claude-haiku-4-5"),
