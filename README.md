@@ -1,10 +1,11 @@
 # goldscanner
 
-A small full-stack app that continuously scans [shopgoodwill.com](https://shopgoodwill.com)
+A full-stack app that continuously scans [shopgoodwill.com](https://shopgoodwill.com)
 for **gold-filled bangle bracelets with enamel**, scores the listing photos with
-Claude's vision model, and shows the high-confidence candidates in a **friendly,
-mobile-responsive web app** where you can open the item links and favorite the ones
-you want to bid on. It can also email you a digest.
+Claude's vision model, and shows the high-confidence candidates in a **modern,
+mobile-responsive web app** (React + Tailwind + [shadcn/ui](https://ui.shadcn.com))
+where you can open the item links, favorite the ones you want to bid on, and
+**teach the AI** what a gold bangle looks like. It can also email you a digest.
 
 ## How it works
 
@@ -12,12 +13,13 @@ you want to bid on. It can also email you a digest.
 search shopgoodwill ─▶ skip items already seen ─▶ title keyword pre-filter
         │
         ▼
-  Claude vision scores each new item's photos (is it a gold-filled enamel bangle?)
+  Claude vision scores each new item's photos
+  (steered by YOUR labeled examples + guidance — see "Train the AI")
         │
         ▼
   matches at/above your confidence threshold are saved to the database
         │
-        ├──▶ web UI: browse candidates, open links, ★ favorite / hide  (phone-friendly)
+        ├──▶ web UI: browse candidates, open links, ★ favorite / hide, train the AI
         └──▶ optional email digest (photos, price, end time, link)
 ```
 
@@ -34,12 +36,41 @@ search shopgoodwill ─▶ skip items already seen ─▶ title keyword pre-filt
 
 ## The web app
 
-- **Mobile-first** layout (works great on a phone) with three tabs: **New**,
-  **★ Favorites**, and **All**.
-- Each candidate is a card with the photo, price, bid count, end time, a match
-  **confidence bar**, the model's one-line reasoning, a **View ↗** link straight
-  to the shopgoodwill listing, and **☆ Favorite** / **Hide** buttons.
-- A **Scan now** button triggers an immediate scan; the page also auto-refreshes.
+Built with **React + Vite + Tailwind + shadcn/ui**, dark-mode aware, mobile-first.
+
+**Candidates** tab — three filters: **New**, **★ Favorites**, **All**. Each
+candidate is a card with the photo, price, bid count, end time, a match
+**confidence bar**, the model's one-line reasoning, a **View ↗** link straight to
+the shopgoodwill listing, and **★ Favorite** / **Hide** buttons. A **Scan now**
+button triggers an immediate scan; the page auto-refreshes.
+
+**Train the AI** tab — see below.
+
+## Train the AI
+
+You can't fine-tune Claude's weights, but you can do something just as useful and
+immediate: **few-shot steering**. You label real listings as ✅ *gold bangle* or
+❌ *not*, and the app feeds a curated set of those labeled reference photos — plus
+free-text guidance you write — into the vision prompt **every time it scores a new
+item**. More and better labels → sharper matching, right away.
+
+In the **Train** tab you can:
+
+- **Edit guidance** in your own words (e.g. "vintage gold-filled bangles with real
+  vitreous enamel; avoid modern costume jewelry and painted/epoxy 'enamel'").
+- **Label a queue** of listings the scanner has seen with one tap (✅ / ❌).
+- **Add references by image URL** (paste any photo URL).
+- **Manage** your positive / negative example sets (with thumbnails + delete).
+
+Your **Favorite** and **Hide** actions in the Candidates tab also auto-create
+positive / negative labels, so the system gets smarter just from normal use.
+
+### Is there a dataset I can use?
+
+There's no off-the-shelf "gold-filled enamel bangle" dataset — it's too niche. The
+practical (and better) dataset is the one you build from shopgoodwill itself: label
+as listings come in, and let your favorites/hides seed it. A few dozen good ✅/❌
+examples go a long way.
 
 ### API (used by the UI)
 
@@ -49,7 +80,10 @@ search shopgoodwill ─▶ skip items already seen ─▶ title keyword pre-filt
 | `GET /api/items?status=new\|favorite\|all` | List matched candidates |
 | `POST /api/items/{id}/status` `{"status":"favorite\|new\|dismissed"}` | Favorite / unfavorite / hide |
 | `POST /api/scan` | Trigger a scan now |
-| `GET /api/status` | Counts + last-scan info |
+| `GET /api/status` | Counts, examples, guidance, last-scan info |
+| `GET /api/queue` | Listings waiting to be labeled |
+| `GET /api/examples` · `POST /api/examples` · `DELETE /api/examples/{id}` | Manage training labels |
+| `GET /api/guidance` · `PUT /api/guidance` | Read / set the free-text guidance |
 | `GET /healthz` | Health check |
 
 ## Important: where it runs
@@ -89,19 +123,33 @@ normal password) as `SMTP_PASS`. Any SMTP provider (Fastmail, SendGrid, etc.) wo
 
 ## Run locally
 
+**Backend:**
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env          # then fill in your keys
 set -a; source .env; set +a   # export the vars
-
-# Run the full app (web UI + background scanner) — open http://localhost:8000
-python -m goldscanner.main
+python -m goldscanner.main     # serves API on http://localhost:8000
 
 # …or just do one scan and exit (no web server), handy for testing:
 GOLDSCANNER_RUN_ONCE=true python -m goldscanner.main
 ```
 
+**Frontend** (two options):
+
+```bash
+cd frontend
+npm install
+
+# A) Hot-reloading dev server (proxies /api to the backend on :8000):
+npm run dev          # open http://localhost:5173
+
+# B) Build static files; the backend then serves the UI at http://localhost:8000:
+npm run build
+```
+
 The web server binds to `$PORT` (default `8000`); Railway sets `PORT` automatically.
+In the Docker image the frontend is built and served for you — no Node needed at runtime.
 
 Run the tests (no network or API key needed):
 
@@ -142,16 +190,19 @@ number of AI calls down. Set `GOLDSCANNER_USE_AI=false` to run keyword-only for 
 ## Project layout
 
 ```
-goldscanner/
-  config.py          env-driven settings
-  client.py          shopgoodwill search / detail / image download
-  store.py           SQLite store (seen items, matches, favorite/hide status)
-  vision.py          Claude vision scoring (structured output)
-  emailer.py         SMTP digest (plain + HTML)
-  scanner.py         one scan cycle
-  service.py         wires components + owns the scan loop
-  web.py             FastAPI app (UI + JSON API)
-  static/index.html  the mobile-responsive web app
-  main.py            build from env + run web server & background scanner
-tests/               unit + web tests with fakes (no network/API key)
+goldscanner/          # Python backend
+  config.py           env-driven settings
+  client.py           shopgoodwill search / detail / image download
+  store.py            SQLite store (items, training examples, settings)
+  vision.py           Claude vision scoring with few-shot examples + guidance
+  emailer.py          SMTP digest (plain + HTML)
+  scanner.py          one scan cycle
+  service.py          wires components + owns the scan loop
+  web.py              FastAPI app (JSON API + serves the React build)
+  main.py             run web server & background scanner
+frontend/             # React + Vite + Tailwind + shadcn/ui
+  src/components/      CandidatesView, TrainView, CandidateCard, ui/*
+  src/lib/             api client + helpers
+tests/                unit + web + training tests (no network/API key)
+Dockerfile            multi-stage: build frontend, then run Python
 ```

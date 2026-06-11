@@ -16,3 +16,8 @@ state/
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend build artifacts
+node_modules/
+frontend/dist/
+goldscanner/web_dist/

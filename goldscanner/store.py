@@ -1,9 +1,10 @@
-"""SQLite store of items the scanner has processed.
+"""SQLite store: seen items / matches, training examples, and settings.
 
-Holds two responsibilities:
+Responsibilities:
   * dedupe — every item we examine gets a row, so we never re-score it
-  * the matched candidates the web UI shows (with a user-settable status:
-    new / favorite / dismissed)
+  * matched candidates the web UI shows (status: new / favorite / dismissed)
+  * training examples — user-labeled photos used as few-shot references
+  * settings — small key/value bag (e.g. the editable guidance text)
 
 Thread-safe: the background scanner thread and the web request threads share one
 connection guarded by a lock (low volume, so a single lock is plenty).
@@ -22,6 +23,13 @@ STATUS_FAVORITE = "favorite"
 STATUS_DISMISSED = "dismissed"
 VALID_STATUSES = {STATUS_NEW, STATUS_FAVORITE, STATUS_DISMISSED}
 
+# Valid training labels.
+LABEL_POSITIVE = "positive"
+LABEL_NEGATIVE = "negative"
+VALID_LABELS = {LABEL_POSITIVE, LABEL_NEGATIVE}
+
+SETTING_GUIDANCE = "guidance"
+
 
 class SeenStore:
     def __init__(self, db_path: str):
@@ -35,7 +43,7 @@ class SeenStore:
 
     def _migrate(self) -> None:
         with self._lock:
-            self._conn.execute(
+            self._conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS items (
                     item_id     TEXT PRIMARY KEY,
@@ -51,16 +59,31 @@ class SeenStore:
                     status      TEXT NOT NULL DEFAULT 'new',
                     first_seen  REAL NOT NULL,
                     updated     REAL NOT NULL
-                )
+                );
+                CREATE INDEX IF NOT EXISTS idx_items_matched_status
+                    ON items (matched, status);
+
+                CREATE TABLE IF NOT EXISTS examples (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id    TEXT,
+                    title      TEXT,
+                    image_url  TEXT NOT NULL,
+                    label      TEXT NOT NULL,
+                    note       TEXT,
+                    created    REAL NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_examples_image
+                    ON examples (image_url);
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                );
                 """
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_items_matched_status "
-                "ON items (matched, status)"
             )
             self._conn.commit()
 
-    # -- dedupe --------------------------------------------------------------
+    # -- dedupe / items ------------------------------------------------------
 
     def is_seen(self, item_id: str) -> bool:
         with self._lock:
@@ -70,7 +93,6 @@ class SeenStore:
             return cur.fetchone() is not None
 
     def record(self, item, matched: bool, confidence: float | None, reasoning: str) -> None:
-        """Insert (or ignore if already present) a processed item."""
         now = time.time()
         with self._lock:
             self._conn.execute(
@@ -98,10 +120,7 @@ class SeenStore:
             )
             self._conn.commit()
 
-    # -- web queries ---------------------------------------------------------
-
     def list_matches(self, status: str | None = None) -> list[dict]:
-        """Matched items, optionally filtered by status, newest first."""
         query = "SELECT * FROM items WHERE matched = 1"
         params: list = []
         if status and status != "all":
@@ -111,6 +130,13 @@ class SeenStore:
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    def get_item(self, item_id: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM items WHERE item_id = ?", (str(item_id),)
+            ).fetchone()
+        return dict(row) if row else None
 
     def set_status(self, item_id: str, status: str) -> bool:
         if status not in VALID_STATUSES:
@@ -122,6 +148,103 @@ class SeenStore:
             )
             self._conn.commit()
             return cur.rowcount > 0
+
+    def labeling_queue(self, limit: int = 40) -> list[dict]:
+        """Items with a photo that haven't been labeled yet (matched first)."""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT i.* FROM items i
+                LEFT JOIN examples e ON e.image_url = i.image_url
+                WHERE i.image_url IS NOT NULL AND e.id IS NULL
+                ORDER BY i.matched DESC, i.first_seen DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # -- training examples ---------------------------------------------------
+
+    def add_example(
+        self,
+        image_url: str,
+        label: str,
+        item_id: str | None = None,
+        title: str | None = None,
+        note: str | None = None,
+    ) -> dict | None:
+        if label not in VALID_LABELS or not image_url:
+            return None
+        now = time.time()
+        with self._lock:
+            # Upsert on image_url so re-labeling flips the label instead of erroring.
+            self._conn.execute(
+                """
+                INSERT INTO examples (item_id, title, image_url, label, note, created)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(image_url) DO UPDATE SET
+                    label = excluded.label,
+                    note = COALESCE(excluded.note, examples.note),
+                    item_id = COALESCE(excluded.item_id, examples.item_id),
+                    title = COALESCE(excluded.title, examples.title)
+                """,
+                (item_id, title, image_url, label, note, now),
+            )
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT * FROM examples WHERE image_url = ?", (image_url,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_examples(self, label: str | None = None) -> list[dict]:
+        query = "SELECT * FROM examples"
+        params: list = []
+        if label in VALID_LABELS:
+            query += " WHERE label = ?"
+            params.append(label)
+        query += " ORDER BY created DESC"
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_example(self, example_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM examples WHERE id = ?", (example_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def example_counts(self) -> dict:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT label, COUNT(*) AS n FROM examples GROUP BY label"
+            ).fetchall()
+        by = {r["label"]: r["n"] for r in rows}
+        return {
+            "positive": int(by.get(LABEL_POSITIVE, 0)),
+            "negative": int(by.get(LABEL_NEGATIVE, 0)),
+            "total": int(sum(by.values())),
+        }
+
+    # -- settings ------------------------------------------------------------
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row and row["value"] is not None else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            self._conn.commit()
+
+    # -- stats ---------------------------------------------------------------
 
     def counts(self) -> dict:
         with self._lock:

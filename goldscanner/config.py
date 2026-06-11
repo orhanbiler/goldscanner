@@ -51,6 +51,9 @@ class Config:
     min_confidence: float = 0.6
     use_ai: bool = True
     max_images_per_item: int = 3
+    # Max labeled reference photos of each kind (positive/negative) fed to the
+    # model per scored item.
+    max_examples_each: int = 4
 
     # Claude
     anthropic_api_key: str | None = None
@@ -89,6 +92,7 @@ class Config:
             min_confidence=_float("GOLDSCANNER_MIN_CONFIDENCE", 0.6),
             use_ai=_bool("GOLDSCANNER_USE_AI", True),
             max_images_per_item=_int("GOLDSCANNER_MAX_IMAGES_PER_ITEM", 3),
+            max_examples_each=_int("GOLDSCANNER_MAX_EXAMPLES", 4),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
             model=os.environ.get("GOLDSCANNER_MODEL", "claude-haiku-4-5"),
             interval_seconds=_int("GOLDSCANNER_INTERVAL_SECONDS", 900),

@@ -1,4 +1,9 @@
-"""Score listing photos with Claude vision to decide if an item matches."""
+"""Score listing photos with Claude vision, steered by user-labeled examples.
+
+This is "training" via few-shot learning: the user's labeled reference photos
+(positive / negative) and free-text guidance are injected into every scoring
+request so the model learns what they consider a match.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +15,7 @@ import anthropic
 
 from .client import ShopGoodwillClient
 from .models import Item, Score
+from .store import LABEL_NEGATIVE, LABEL_POSITIVE, SETTING_GUIDANCE, SeenStore
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ _SCHEMA = {
         },
         "is_match": {
             "type": "boolean",
-            "description": "True only if it matches the target description overall.",
+            "description": "True only if it matches the target overall.",
         },
         "confidence": {
             "type": "number",
@@ -52,36 +58,36 @@ class VisionScorer:
     def __init__(
         self,
         client: ShopGoodwillClient,
+        store: SeenStore,
         target_description: str,
         api_key: str | None = None,
         model: str = "claude-haiku-4-5",
         max_images: int = 3,
+        max_examples_each: int = 4,
     ):
         self.sg_client = client
+        self.store = store
         self.target_description = target_description
         self.model = model
         self.max_images = max_images
+        self.max_examples_each = max_examples_each
         self.anthropic = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        # Cache downloaded example images, keyed by the example-set signature,
+        # so we only re-download when the user changes their labels.
+        self._ex_signature: tuple | None = None
+        self._ex_blocks: list[dict] = []
+        self._img_cache: dict[str, dict | None] = {}
 
     def score(self, item: Item) -> Score:
-        """Send the item's photos to Claude and return a structured verdict."""
-        image_blocks = self._image_blocks(item)
-        if not image_blocks:
+        item_blocks = self._download_blocks(item.image_urls[: self.max_images])
+        if not item_blocks:
             return Score(False, 0.0, "No usable images to score.")
 
-        prompt = (
-            "You are helping find a very specific kind of jewelry listing.\n\n"
-            f"TARGET: {self.target_description}\n\n"
-            f'Listing title: "{item.title}"\n\n'
-            "Look at the photo(s) and judge whether this listing matches the target. "
-            "Be honest about uncertainty — you cannot chemically verify that enamel or "
-            "metal is 'really gold' from a photo, so base confidence on visual cues "
-            "(styling, hallmarks if visible, gold tone, enamel technique) and the title. "
-            "Respond using the required JSON schema."
-        )
-
-        content: list[dict] = list(image_blocks)
-        content.append({"type": "text", "text": prompt})
+        content: list[dict] = []
+        content.extend(self._exemplar_blocks())
+        content.append({"type": "text", "text": "Now evaluate THIS listing:"})
+        content.extend(item_blocks)
+        content.append({"type": "text", "text": self._instructions(item)})
 
         try:
             resp = self.anthropic.messages.create(
@@ -106,21 +112,83 @@ class VisionScorer:
             reasoning=str(data.get("reasoning", "")),
         )
 
-    def _image_blocks(self, item: Item) -> list[dict]:
+    # -- prompt building -----------------------------------------------------
+
+    def _instructions(self, item: Item) -> str:
+        guidance = self.store.get_setting(SETTING_GUIDANCE, "").strip()
+        parts = [
+            "You are helping find a very specific kind of jewelry listing.\n",
+            f"TARGET: {self.target_description}",
+        ]
+        if guidance:
+            parts.append(f"\nADDITIONAL GUIDANCE FROM THE USER:\n{guidance}")
+        parts.append(f'\nThis listing\'s title: "{item.title}"')
+        parts.append(
+            "\nUse the labeled reference photos above (if any) as your guide for what "
+            "does and does not count as a match. Be honest about uncertainty — you "
+            "cannot chemically verify that enamel or metal is 'really gold' from a "
+            "photo, so base confidence on visual cues and the title. "
+            "Respond using the required JSON schema."
+        )
+        return "\n".join(parts)
+
+    def _exemplar_blocks(self) -> list[dict]:
+        positives = self.store.list_examples(LABEL_POSITIVE)[: self.max_examples_each]
+        negatives = self.store.list_examples(LABEL_NEGATIVE)[: self.max_examples_each]
+        signature = (
+            tuple(e["image_url"] for e in positives),
+            tuple(e["image_url"] for e in negatives),
+        )
+        if signature == self._ex_signature:
+            return self._ex_blocks
+
         blocks: list[dict] = []
-        for url in item.image_urls[: self.max_images]:
-            downloaded = self.sg_client.download_image(url)
-            if not downloaded:
-                continue
-            raw, media_type = downloaded
+        if positives:
             blocks.append(
                 {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": base64.standard_b64encode(raw).decode("utf-8"),
-                    },
+                    "type": "text",
+                    "text": "Reference photos that ARE a match (gold-filled enamel bangle):",
                 }
             )
+            for ex in positives:
+                blocks.extend(self._download_blocks([ex["image_url"]]))
+        if negatives:
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": "Reference photos that are NOT a match:",
+                }
+            )
+            for ex in negatives:
+                blocks.extend(self._download_blocks([ex["image_url"]]))
+
+        self._ex_signature = signature
+        self._ex_blocks = blocks
         return blocks
+
+    def _download_blocks(self, urls: list[str]) -> list[dict]:
+        blocks: list[dict] = []
+        for url in urls:
+            block = self._image_block(url)
+            if block:
+                blocks.append(block)
+        return blocks
+
+    def _image_block(self, url: str) -> dict | None:
+        if url in self._img_cache:
+            return self._img_cache[url]
+        downloaded = self.sg_client.download_image(url)
+        if not downloaded:
+            self._img_cache[url] = None
+            return None
+        raw, media_type = downloaded
+        block = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": base64.standard_b64encode(raw).decode("utf-8"),
+            },
+        }
+        self._img_cache[url] = block
+        return block

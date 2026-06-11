@@ -27,10 +27,12 @@ class Service:
         self.scorer = (
             VisionScorer(
                 client=self.client,
+                store=self.store,
                 target_description=config.target_description,
                 api_key=config.anthropic_api_key,
                 model=config.model,
                 max_images=config.max_images_per_item,
+                max_examples_each=config.max_examples_each,
             )
             if config.use_ai
             else None
