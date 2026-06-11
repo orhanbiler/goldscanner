@@ -26,8 +26,14 @@ function SourceDiagnostics({ status }: { status: Status }) {
   const stats = status.source_stats ?? {};
   const notes = status.source_notes ?? {};
   const names = Array.from(
-    new Set([...(status.sources ?? []), ...Object.keys(stats), ...Object.keys(notes)]),
-  ).map((n) => n.replace(" (scrape)", ""));
+    new Set(
+      [
+        ...(status.sources ?? []),
+        ...Object.keys(stats),
+        ...Object.keys(notes),
+      ].map((n) => n.replace(" (scrape)", "")),
+    ),
+  );
   if (names.length === 0) return null;
 
   return (
