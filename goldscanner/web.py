@@ -73,6 +73,10 @@ def create_app(service: Service) -> FastAPI:
     def healthz() -> dict:
         return {"ok": True}
 
+    @app.get("/api/activity")
+    def api_activity(after: int = 0) -> dict:
+        return service.activity.since(after=after)
+
     @app.get("/api/status")
     def api_status() -> dict:
         data = service.status()

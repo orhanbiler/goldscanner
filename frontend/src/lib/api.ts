@@ -23,6 +23,13 @@ export interface Example {
   created: number;
 }
 
+export interface ActivityEvent {
+  id: number;
+  ts: number;
+  level: "info" | "success" | "warn" | "muted";
+  message: string;
+}
+
 export interface Counts {
   seen: number;
   matched: number;
@@ -99,6 +106,10 @@ export const api = {
   deleteExample: (id: number) =>
     fetch(`/api/examples/${id}`, { method: "DELETE" }).then(
       j<{ ok: boolean; counts: ExampleCounts }>,
+    ),
+  activity: (after = 0) =>
+    fetch(`/api/activity?after=${after}`).then(
+      j<{ events: ActivityEvent[]; last_id: number }>,
     ),
   getGuidance: () => fetch("/api/guidance").then(j<{ text: string }>),
   setGuidance: (text: string) =>

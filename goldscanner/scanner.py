@@ -21,6 +21,7 @@ class Scanner:
         store: SeenStore,
         scorer: VisionScorer | None,
         extra_sources: list | None = None,
+        activity=None,
     ):
         self.config = config
         self.client = client
@@ -30,17 +31,33 @@ class Scanner:
         self.extra_sources = extra_sources or []
         # Per-source diagnostics from the most recent scan, for the UI.
         self.last_source_stats: dict[str, dict] = {}
+        self.activity = activity
+
+    def _say(self, message: str, level: str = "info") -> None:
+        if self.activity is not None:
+            self.activity.add(message, level)
 
     def scan_once(self) -> list[tuple[Item, Score]]:
         """Run a full scan and return the list of newly matched (item, score)."""
         matches: list[tuple[Item, Score]] = []
         new_count = 0
+        skipped = 0
+
+        self._say("🔍 Starting a new scan…")
 
         for item in self._iter_new_items():
             new_count += 1
             if not self._passes_prefilter(item):
                 self.store.record(item, matched=False, confidence=None, reasoning="")
+                skipped += 1
                 continue
+
+            is_lot = self._looks_like_lot(item.title)
+            short = item.title[:70]
+            if is_lot:
+                self._say(f'📦 Studying a jewelry lot — scanning its photos: "{short}"')
+            else:
+                self._say(f'🔎 Examining "{short}"…')
 
             score = self._score(item)
             matched = score.is_match and score.confidence >= self.config.min_confidence
@@ -50,15 +67,22 @@ class Scanner:
                 confidence=score.confidence,
                 reasoning=score.reasoning,
             )
+            pct = round(score.confidence * 100)
             if matched:
-                log.info(
-                    "MATCH %s (%.0f%%): %s",
-                    item.item_id,
-                    score.confidence * 100,
-                    item.title,
+                self._say(
+                    f'✅ Match! {pct}% — "{short}" — saved to your candidates.',
+                    "success",
                 )
                 matches.append((item, score))
+            else:
+                why = (score.reasoning or "").lstrip("[Lot] ")[:90]
+                self._say(f'🙈 Not a match ({pct}%) — "{short}". {why}', "muted")
 
+        self._say(
+            f"🟢 Scan complete: looked at {new_count} new listing(s), "
+            f"skipped {skipped}, found {len(matches)} match(es).",
+            "success" if matches else "info",
+        )
         log.info(
             "Scan complete: %d new item(s) examined, %d match(es).",
             new_count,
@@ -87,12 +111,14 @@ class Scanner:
         sg_fetched = 0
         sg_error: str | None = None
         for query in self.config.queries:
+            self._say(f'🛒 Searching ShopGoodwill for "{query}"…', "muted")
             for page in range(1, self.config.pages_per_query + 1):
                 try:
                     items = self.client.search(query, page=page)
                 except Exception as exc:  # noqa: BLE001
                     sg_error = str(exc)
                     log.warning("search failed (query=%r page=%d): %s", query, page, exc)
+                    self._say(f'⚠️ ShopGoodwill search for "{query}" failed: {exc}', "warn")
                     break
                 if not items:
                     break
@@ -103,16 +129,21 @@ class Scanner:
         # other sources (etsy, ebay) — each best-effort
         for source in self.extra_sources:
             name = getattr(source, "name", type(source).__name__.lower())
+            pretty = {"etsy": "Etsy", "ebay": "eBay"}.get(name, name)
+            self._say(f"🏷️ Checking {pretty}…", "muted")
             try:
                 items = source.fetch_items()
-                stats[name] = {
-                    "fetched": len(items),
-                    "error": getattr(source, "last_error", None),
-                }
+                err = getattr(source, "last_error", None)
+                stats[name] = {"fetched": len(items), "error": err}
+                if err:
+                    self._say(f"⚠️ {pretty}: {err}", "warn")
+                else:
+                    self._say(f"🏷️ {pretty}: found {len(items)} listing(s).", "muted")
                 yield from fresh(items)
             except Exception as exc:  # noqa: BLE001
                 stats[name] = {"fetched": 0, "error": str(exc)}
                 log.warning("source %s failed: %s", name, exc)
+                self._say(f"⚠️ {pretty} failed: {exc}", "warn")
 
     def _passes_prefilter(self, item: Item) -> bool:
         keywords = self.config.title_keywords

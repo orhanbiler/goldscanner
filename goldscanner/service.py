@@ -9,8 +9,9 @@ import logging
 import threading
 import time
 
+from .activity import SUCCESS, WARN, ActivityLog
 from .client import ShopGoodwillClient
-from .config import Config
+from .config import Config, db_is_persistent
 from .ebay import EbayClient
 from .emailer import Emailer
 from .etsy import EtsyClient
@@ -54,8 +55,10 @@ look-alike, lean YES if the engraving is fine and Victorian in character.
 class Service:
     def __init__(self, config: Config):
         self.config = config
+        self.activity = ActivityLog()
         self.client = ShopGoodwillClient()
         self.store = SeenStore(config.db_path)
+        self._log_persistence()
         self.scorer = (
             VisionScorer(
                 client=self.client,
@@ -85,6 +88,7 @@ class Service:
         self.scanner = Scanner(
             config, self.client, self.store, self.scorer,
             extra_sources=self.extra_sources,
+            activity=self.activity,
         )
 
         if config.seed_defaults:
@@ -95,6 +99,23 @@ class Service:
         self.last_scan_at: float | None = None
         self.last_scan_matches: int = 0
         self.scanning: bool = False
+
+    def _log_persistence(self) -> None:
+        path = self.config.db_path
+        examples = self.store.example_counts()["total"]
+        if db_is_persistent(path):
+            self.activity.add(
+                f"💾 Database is on a persistent volume ({path}) — your favorites "
+                f"and {examples} training example(s) are saved across deploys.",
+                SUCCESS,
+            )
+        else:
+            self.activity.add(
+                f"⚠️ Database is at '{path}', which is NOT on a persistent volume. "
+                "Favorites and training examples will reset on the next redeploy. "
+                "Add a Railway Volume mounted at /data to fix this permanently.",
+                WARN,
+            )
 
     def _build_sources(self, config: Config) -> list:
         sources: list = []
@@ -159,8 +180,18 @@ class Service:
                 if matches and self.emailer is not None:
                     try:
                         self.emailer.send_digest(matches)
+                        self.activity.add(
+                            f"📧 Emailed you a digest of {len(matches)} match(es).",
+                            SUCCESS,
+                        )
                     except Exception as exc:  # noqa: BLE001
                         log.error("Failed to send email digest: %s", exc)
+                        self.activity.add(
+                            "📧 Couldn't send the email digest "
+                            "(Railway blocks outbound email) — set "
+                            "GOLDSCANNER_EMAIL_ENABLED=false to silence this.",
+                            WARN,
+                        )
                 self.last_scan_at = time.time()
                 self.last_scan_matches = len(matches)
                 return len(matches)
@@ -169,20 +200,29 @@ class Service:
 
     def run_loop(self) -> None:
         """Blocking scan loop until stop() is called."""
-        log.info(
-            "Scan loop starting. queries=%s ai=%s email=%s interval=%ds",
-            self.config.queries,
-            self.config.use_ai,
-            self.config.email_enabled,
-            self.config.interval_seconds,
+        srcs = ", ".join(self._source_names())
+        self.activity.add(
+            f"🚀 goldscanner is up and watching: {srcs}. "
+            f"Scanning automatically every {self._mins()} minute(s).",
+            SUCCESS,
         )
         while not self._stop.is_set():
             try:
                 self.scan_once()
             except Exception as exc:  # noqa: BLE001
                 log.exception("Scan cycle failed: %s", exc)
+                self.activity.add(f"❌ Scan hit an error: {exc}", WARN)
+            if self._stop.is_set():
+                break
+            self.activity.add(
+                f"😴 Resting for {self._mins()} minute(s) until the next scan.",
+                "muted",
+            )
             # Wait interval, but wake immediately on stop.
             self._stop.wait(self.config.interval_seconds)
+
+    def _mins(self) -> int:
+        return max(1, round(self.config.interval_seconds / 60))
 
     def start_background(self) -> threading.Thread:
         thread = threading.Thread(target=self.run_loop, name="scanner", daemon=True)

@@ -40,6 +40,31 @@ def _list(name: str, default: list[str]) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
+# Mounted persistent volumes to prefer for the database, in order.
+_VOLUME_DIRS = ("/data", "/var/data", "/mnt/data")
+
+
+def resolve_db_path(raw: str) -> str:
+    """Keep the database on a persistent volume when one is mounted.
+
+    A bare/relative path (e.g. "goldscanner.db") inside an ephemeral container
+    gets wiped on every redeploy — taking favorites and training examples with
+    it. If a volume is mounted (Railway's /data), put the DB there even when the
+    configured path is relative. Absolute paths are always respected as-is.
+    """
+    if os.path.isabs(raw):
+        return raw
+    for vol in _VOLUME_DIRS:
+        if os.path.isdir(vol) and os.access(vol, os.W_OK):
+            return os.path.join(vol, os.path.basename(raw))
+    return raw
+
+
+def db_is_persistent(path: str) -> bool:
+    abspath = os.path.abspath(path)
+    return any(abspath.startswith(vol + os.sep) for vol in _VOLUME_DIRS)
+
+
 @dataclass
 class Config:
     # What to look for
@@ -168,7 +193,9 @@ class Config:
             ebay_marketplace=os.environ.get("EBAY_MARKETPLACE", "EBAY_US"),
             ebay_limit=_int("GOLDSCANNER_EBAY_LIMIT", 50),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
-            db_path=os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db"),
+            db_path=resolve_db_path(
+                os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db")
+            ),
             email_enabled=_bool("GOLDSCANNER_EMAIL_ENABLED", True),
             smtp_host=os.environ.get("SMTP_HOST", ""),
             smtp_port=_int("SMTP_PORT", 587),

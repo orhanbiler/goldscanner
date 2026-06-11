@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Moon, RefreshCw, Sun } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActivityView } from "@/components/ActivityView";
 import { CandidatesView } from "@/components/CandidatesView";
 import { TrainView } from "@/components/TrainView";
 import { Button } from "@/components/ui/button";
@@ -151,6 +152,7 @@ export default function App() {
           <TabsList>
             <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="train">Train the AI</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
 
           <TabsContent value="candidates">
@@ -159,6 +161,10 @@ export default function App() {
 
           <TabsContent value="train">
             <TrainView onChanged={loadStatus} />
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <ActivityView />
           </TabsContent>
         </Tabs>
       </main>
