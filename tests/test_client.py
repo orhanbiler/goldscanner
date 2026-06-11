@@ -1,4 +1,16 @@
-from goldscanner.client import ShopGoodwillClient, _abs_image
+from goldscanner.client import ShopGoodwillClient, _abs_image, sniff_media_type
+
+
+def test_sniff_media_type_detects_real_format():
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 16
+    gif = b"GIF89a" + b"\x00" * 16
+    webp = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 8
+    assert sniff_media_type(png, "image/jpeg") == "image/png"  # header lied
+    assert sniff_media_type(jpeg, "image/png") == "image/jpeg"
+    assert sniff_media_type(gif) == "image/gif"
+    assert sniff_media_type(webp) == "image/webp"
+    assert sniff_media_type(b"unknown blob", "image/jpeg") == "image/jpeg"
 
 
 def test_abs_image_relative():

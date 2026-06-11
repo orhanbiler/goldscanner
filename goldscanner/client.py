@@ -26,6 +26,23 @@ _UA = (
 )
 
 
+def sniff_media_type(data: bytes, fallback: str = "image/jpeg") -> str:
+    """Detect the actual image type from magic bytes.
+
+    CDNs sometimes serve a PNG with a Content-Type of image/jpeg; the Anthropic
+    API rejects mismatched media types, so trust the bytes over the header.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return fallback
+
+
 def _abs_image(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -98,9 +115,11 @@ class ShopGoodwillClient:
         except Exception as exc:  # noqa: BLE001 - best effort
             log.debug("image download failed %s: %s", url, exc)
             return None
-        media_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
-        if not media_type.startswith("image/"):
-            media_type = "image/jpeg"
+        header_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+        if not header_type.startswith("image/"):
+            header_type = "image/jpeg"
+        # Trust magic bytes over the header — CDNs lie about content types.
+        media_type = sniff_media_type(resp.content, fallback=header_type)
         return resp.content, media_type
 
     # -- internals -----------------------------------------------------------
