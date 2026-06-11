@@ -1,0 +1,14 @@
+# Railway service configuration.
+# Docs: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+# Long-running worker; restart if it ever exits unexpectedly.
+restartPolicyType = "always"
+numReplicas = 1
+
+# To persist the "already seen" database across deploys, add a Volume in the
+# Railway dashboard mounted at /data. GOLDSCANNER_DB_PATH defaults to
+# /data/goldscanner.db in the Dockerfile so it lands on that volume.
