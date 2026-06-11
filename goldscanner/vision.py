@@ -118,6 +118,8 @@ class VisionScorer:
         target_description: str,
         api_key: str | None = None,
         model: str = "claude-haiku-4-5",
+        verify_model: str | None = "claude-opus-4-8",
+        verify_threshold: float = 0.35,
         max_images: int = 3,
         max_examples_each: int = 4,
     ):
@@ -125,6 +127,12 @@ class VisionScorer:
         self.store = store
         self.target_description = target_description
         self.model = model
+        # Two-tier scoring: `model` cheaply screens everything; matches and
+        # borderline calls get the final verdict from `verify_model`, which has
+        # much stronger vision (high-res hallmark/wear detail). Set to None or
+        # the same id as `model` to disable.
+        self.verify_model = verify_model
+        self.verify_threshold = verify_threshold
         self.max_images = max_images
         self.max_examples_each = max_examples_each
         self.anthropic = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
@@ -146,15 +154,33 @@ class VisionScorer:
         content.extend(item_blocks)
         content.append({"type": "text", "text": self._instructions(item)})
 
+        first = self._score_once(self.model, content, item)
+        if not self._should_verify(first):
+            return first
+
+        verified = self._score_once(self.verify_model, content, item)
+        if verified.reasoning.startswith(("Scoring error", "Model returned")):
+            return first  # expert call failed; keep the screening verdict
+        verified.reasoning = "[Expert-verified] " + verified.reasoning
+        return verified
+
+    def _should_verify(self, first: Score) -> bool:
+        if not self.verify_model or self.verify_model == self.model:
+            return False
+        if first.reasoning.startswith(("Scoring error", "Model returned")):
+            return False
+        return first.is_match or first.confidence >= self.verify_threshold
+
+    def _score_once(self, model: str, content: list[dict], item: Item) -> Score:
         try:
             resp = self.anthropic.messages.create(
-                model=self.model,
+                model=model,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": content}],
                 output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
             )
         except Exception as exc:  # noqa: BLE001
-            log.warning("vision scoring failed for %s: %s", item.item_id, exc)
+            log.warning("vision scoring (%s) failed for %s: %s", model, item.item_id, exc)
             return Score(False, 0.0, f"Scoring error: {exc}")
 
         text = next((b.text for b in resp.content if b.type == "text"), "")

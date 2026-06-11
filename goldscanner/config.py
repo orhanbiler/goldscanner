@@ -115,6 +115,12 @@ class Config:
     # Max previously-rejected items re-evaluated per "re-score" run.
     rescore_limit: int = 150
 
+    # Two-tier vision: matches/borderline calls from the cheap screening model
+    # get a final verdict from this stronger vision model (high-res detail).
+    # Empty string disables the second pass.
+    verify_model: str = "claude-opus-4-8"
+    verify_threshold: float = 0.35
+
     # Seed the built-in guidance (antique enamel bangles) into the DB on first run.
     seed_defaults: bool = True
 
@@ -198,6 +204,8 @@ class Config:
             ebay_marketplace=os.environ.get("EBAY_MARKETPLACE", "EBAY_US"),
             ebay_limit=_int("GOLDSCANNER_EBAY_LIMIT", 50),
             rescore_limit=_int("GOLDSCANNER_RESCORE_LIMIT", 150),
+            verify_model=os.environ.get("GOLDSCANNER_VERIFY_MODEL", "claude-opus-4-8"),
+            verify_threshold=_float("GOLDSCANNER_VERIFY_THRESHOLD", 0.35),
             seed_defaults=_bool("GOLDSCANNER_SEED_DEFAULTS", True),
             db_path=resolve_db_path(
                 os.environ.get("GOLDSCANNER_DB_PATH", "goldscanner.db")

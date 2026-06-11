@@ -106,6 +106,8 @@ class Service:
                 target_description=config.target_description,
                 api_key=config.anthropic_api_key,
                 model=config.model,
+                verify_model=(config.verify_model or None),
+                verify_threshold=config.verify_threshold,
                 max_images=config.max_images_per_item,
                 max_examples_each=config.max_examples_each,
             )
